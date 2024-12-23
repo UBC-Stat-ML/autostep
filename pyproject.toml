@@ -1,21 +1,17 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
+[tool.poetry]
 name = "autosteppy"
 version = "0.1.0"
-dependencies = []
-requires-python = ">=3.12"
-authors = [
-  {name = "Miguel Biron-Lattes", email = "miguelbl9@gmail.com"},
-]
-maintainers = [
-  {name = "Miguel Biron-Lattes", email = "miguelbl9@gmail.com"},
-]
 description = "A numpyro implementation of autoStep methods"
+authors = ["Miguel Biron-Lattes <miguelbl9@gmail.com>"]
+license = "Apache-2.0"
 readme = "README.md"
-license = {file = "LICENSE"}
+repository = "https://github.com/miguelbiron/autosteppy"
 
-[project.urls]
-Repository = "https://github.com/miguelbiron/autosteppy.git"
+[tool.poetry.dependencies]
+python = "^3.12"
+jax = "^0.4.38"
+numpyro = "^0.16.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
