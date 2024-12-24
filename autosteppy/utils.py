@@ -1,4 +1,8 @@
+from jax import lax
 from numpyro import infer
+
+def std_normal_potential(v):
+    return lax.dot(v,v)
 
 # Taken without much changes from
 # https://github.com/pyro-ppl/numpyro/blob/master/numpyro/infer/barker.py
