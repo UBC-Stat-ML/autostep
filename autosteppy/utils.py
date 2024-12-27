@@ -1,5 +1,13 @@
 from jax import lax
+from jax.experimental import checkify
 from numpyro import infer
+
+def proto_checkified_is_finite(x):
+  checkify.check(lax.is_finite(x), f"Found non-finite value x = {x}")
+  return
+
+checkified_is_finite = checkify.checkify(proto_checkified_is_finite)
+
 
 def std_normal_potential(v):
     return lax.dot(v,v)

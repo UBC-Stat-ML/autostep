@@ -1,28 +1,31 @@
 from collections import namedtuple
 
-import autosteppy
 import jax
 
-from autosteppy import utils
 from jax import flatten_util
 from jax import numpy as jnp
 from jax import random
 from numpyro import infer
 from numpyro import util
 
-import autosteppy.autostep
+from autosteppy import autostep
+from autosteppy import stats
+from autosteppy import utils
+
 
 AutoRWMHState = namedtuple(
     "AutoRWMHState",
     [
         "x",
         "v_flat",
-        "step_size",
+        "joint_pot",
+        "exponent",
         "rng_key",
+        "stats"
     ],
 )
 
-class AutoRWMH(autosteppy.autostep.AutoStep):
+class AutoRWMH(autostep.AutoStep):
 
     def __init__(
         self,
@@ -39,8 +42,10 @@ class AutoRWMH(autosteppy.autostep.AutoStep):
     def sample_field(self):
         return "x"
 
-    def joint_potential(self, state):
-        return self._potential_fn(state.x) + utils.std_normal_potential(state.v)
+    def update_joint_potential(self, state):
+        x, v_flat, _ = state
+        new_joint_pot = self._potential_fn(x) + utils.std_normal_potential(v_flat)
+        return state._replace(joint_pot = new_joint_pot)
 
     def init(self, rng_key, num_warmup, init_params, model_args, model_kwargs):
         rng_key, rng_key_init = random.split(rng_key)
@@ -55,23 +60,24 @@ class AutoRWMH(autosteppy.autostep.AutoStep):
         init_state = AutoRWMHState(
             init_params,
             jnp.zeros(x_flat_shape),
+            0., # Note: not the actual joint potential value; needs to be updated 
             self.base_step_size,
             rng_key,
+            stats.AutoStepStats()            
         )
         return jax.device_put(init_state)
     
     def refresh_aux_vars(self, state):
         rng_key, v_key = random.split(state.rng_key)
         v_flat = random.normal(v_key, jnp.shape(state.v_flat))
-        return AutoRWMHState(state.x, v_flat, state.step_size, rng_key)
-
+        return state._replace(v_flat = v_flat, rng_key = rng_key)
+    
     def involution_main(self, state):
-        x, v_flat, step_size, rng_key = state
-        x_flat, unravel_fn = flatten_util.ravel_pytree(x)
-        x_new = unravel_fn(x_flat + step_size * v_flat)
-        return AutoRWMHState(x_new, v_flat, step_size, rng_key)
+        step_size = self.step_size(state)
+        x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)
+        x_new = unravel_fn(x_flat + step_size * state.v_flat)
+        return state._replace(x = x_new)
     
     def involution_aux(self, state):
-        x, v_flat, step_size, rng_key = state
-        return AutoRWMHState(x, -v_flat, step_size, rng_key)
+        return state._replace(v_flat = -state.v_flat)
     
