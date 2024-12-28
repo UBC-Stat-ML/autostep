@@ -9,6 +9,7 @@ from numpyro import infer
 from numpyro import util
 
 from autosteppy import autostep
+from autosteppy import selectors
 from autosteppy import statistics
 from autosteppy import utils
 
@@ -32,11 +33,13 @@ class AutoRWMH(autostep.AutoStep):
         model=None,
         potential_fn=None,
         base_step_size=1.0,
+        selector = selectors.SymmetricSelector(),
     ):
         self._model = model
         self._potential_fn = potential_fn
         self._base_step_size = base_step_size
         self._postprocess_fn = None
+        self.selector = selector
         
     @property
     def sample_field(self):
@@ -81,3 +84,10 @@ class AutoRWMH(autostep.AutoStep):
     def involution_aux(self, state):
         return state._replace(v_flat = -state.v_flat)
     
+    # TODO
+    def next_state_accepted(self, proposed_state, bwd_state, rng_key):
+        pass
+
+    # TODO
+    def next_state_rejected(self, proposed_state, bwd_state, rng_key):
+        pass

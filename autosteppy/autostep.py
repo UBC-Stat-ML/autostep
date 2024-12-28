@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
 from jax import lax
+from jax import random
 from numpyro import infer
 from numpyro import util
 
@@ -53,16 +54,6 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         return self._base_step_size * (2. ** state.exponent)
 
-    @abstractmethod
-    def reset_step_size(self, state):
-        """
-        Return state.step_size to self.base_step_size.
-
-        :param state: Current state.
-        :return: State with step_size == self.base_step_size.
-        """
-        raise NotImplementedError
-
     def involution(self, state):
         """
         Apply the (full) involution, which must satisfy for all `state`,
@@ -103,23 +94,37 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         utils.checkified_is_finite(state.log_joint)
 
         # draw selector parameters
-        selector_params = self.selector.draw_parameters(state)
+        rng_key, selector_key = random.split(state.rng_key)
+        state = state._replace(rng_key = rng_key) # always update the state with the modified key
+        selector_params = self.selector.draw_parameters(selector_key)
 
         # forward step size search
-        fwd_state = self.auto_step_size(state, selector_params)
+        proposed_state = self.auto_step_size(state, selector_params)
 
         # backward step size search
-        bwd_state = self.reset_exponent(self.involution_aux(fwd_state)) # init bwd state from fwd but reset exponent
+        bwd_state = self.reset_exponent(self.involution_aux(proposed_state)) # bwd state: apply 2nd half of involution, then reset exponent
         bwd_state = self.auto_step_size(bwd_state, selector_params)
-        reversibility_passed = fwd_state.exponent == bwd_state.exponent
-        
-        # TODO: Metropolis accept-reject
+        reversibility_passed = proposed_state.exponent == bwd_state.exponent
+        avg_fwd_bwd_step_size = (self.step_size(proposed_state) + self.step_size(bwd_state)) / 2
 
-        # collect statistics
-        new_stats = statistics.record_post_sample_stats(
-            state.stats, avg_fwd_bwd_step_size
+        # Metropolis-Hastings step
+        log_joint_diff = proposed_state.log_joint - state.log_joint
+        acc_prob = reversibility_passed * lax.clamp(0., lax.exp(log_joint_diff), 1.)
+        rng_key, accept_key = random.split(bwd_state.rng_key) # note: bwd_state is the one with the "freshest" rng_key
+
+        # build the next state depending on the MH outcome
+        next_state = lax.cond(
+            random.bernoulli(accept_key, acc_prob),
+            self.next_state_accepted,
+            self.next_state_rejected,
+            (proposed_state, bwd_state, rng_key)
         )
-        return state._replace(stats = new_stats)
+
+        # collect statistics and return
+        new_stats = statistics.record_post_sample_stats(
+            next_state.stats, avg_fwd_bwd_step_size, acc_prob
+        )
+        return next_state._replace(stats = new_stats)
 
     def auto_step_size(self, state, selector_params):
         init_log_joint = state.log_joint
@@ -132,7 +137,6 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         next_state = self.grow_step_size(next_state, selector_params, init_log_joint)
 
         return next_state
-
 
     def shrink_step_size_cond_fun(self, state, selector_params, init_log_joint):
         log_diff = state.log_joint - init_log_joint
@@ -175,4 +179,27 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
 
         return state
+    
+    @abstractmethod
+    def next_state_accepted(self, proposed_state, bwd_state, rng_key):
+        """
+        Build the final state of the `sample` method given that the MH step is accepted.
 
+        :param proposed_state: Proposed state.
+        :param bwd_state: Reversed state. Fresher than proposed_state, but `rng_key` is stale.
+        :param rng_key: Up-to-date RNG key.
+        :return: Next state.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def next_state_rejected(self, proposed_state, bwd_state, rng_key):
+        """
+        Build the final state of the `sample` method given that the MH step is rejected.
+
+        :param proposed_state: Proposed state.
+        :param bwd_state: Reversed state. Fresher than proposed_state, but `rng_key` is stale.
+        :param rng_key: Up-to-date RNG key.
+        :return: Next state.
+        """
+        raise NotImplementedError
