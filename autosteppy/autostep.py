@@ -147,13 +147,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return self.update_log_joint(self.involution_main(state))
 
     def shrink_step_size(self, state, selector_params, init_log_joint):
-        state, *extra = lax.while_loop(
+        new_state, *extra = lax.while_loop(
             self.shrink_step_size_cond_fun,
             self.shrink_step_size_body_fun,
-            (self, state, selector_params, init_log_joint)
+            (state, selector_params, init_log_joint)
         )
-
-        return state
+        return new_state
     
     def grow_step_size_cond_fun(self, state, selector_params, init_log_joint):
         log_diff = state.log_joint - init_log_joint
@@ -174,8 +173,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         state = lax.cond(
             state.exponent > 0,
             lambda s: s._replace(exponent = s.exponent - 1),
-            lambda s: s,
+            util.identity,
             state
         )
-
         return state
