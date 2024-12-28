@@ -46,25 +46,25 @@ class AutoRWMH(autostep.AutoStep):
         return "x"
 
     def update_log_joint(self, state):
-        x, v_flat, _ = state
+        x, v_flat, *extra = state
         new_log_joint = -self._potential_fn(x) - utils.std_normal_potential(v_flat)
         new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
         return state._replace(log_joint = new_log_joint, stats = new_stats)
 
-    def init(self, rng_key, num_warmup, init_params, model_args, model_kwargs):
-        rng_key, rng_key_init = random.split(rng_key)
-        
-        # initialize the state and the model
-        # store potential fn and postprocess fn
-        init_params, self._potential_fn, self._postprocess_fn = utils.init_state_and_model(
-            self._model, rng_key_init, model_args, model_kwargs, init_params
-        )
+    def init(self, rng_key, num_warmup, init_params, model_args, model_kwargs):        
+        if self._model is not None:
+            # initialize the state and the model
+            # store potential fn and postprocess fn
+            rng_key, rng_key_init = random.split(rng_key)
+            init_params, self._potential_fn, self._postprocess_fn = utils.init_state_and_model(
+                self._model, rng_key_init, model_args, model_kwargs, init_params
+            )
         x_flat_shape = jnp.shape(flatten_util.ravel_pytree(init_params)[0])
         init_state = AutoRWMHState(
             init_params,
             jnp.zeros(x_flat_shape),
             0., # Note: not the actual log joint value; needs to be updated 
-            self.base_step_size,
+            self._base_step_size,
             rng_key,
             statistics.AutoStepStats()
         )
@@ -83,11 +83,4 @@ class AutoRWMH(autostep.AutoStep):
     
     def involution_aux(self, state):
         return state._replace(v_flat = -state.v_flat)
-    
-    # TODO
-    def next_state_accepted(self, proposed_state, bwd_state, rng_key):
-        pass
 
-    # TODO
-    def next_state_rejected(self, proposed_state, bwd_state, rng_key):
-        pass

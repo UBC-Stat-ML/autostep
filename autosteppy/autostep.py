@@ -115,9 +115,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # build the next state depending on the MH outcome
         next_state = lax.cond(
             random.bernoulli(accept_key, acc_prob),
-            self.next_state_accepted,
-            self.next_state_rejected,
-            (proposed_state, bwd_state, rng_key)
+            utils.next_state_accepted,
+            utils.next_state_rejected,
+            (state, proposed_state, bwd_state, rng_key)
         )
 
         # collect statistics and return
@@ -147,10 +147,10 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return self.update_log_joint(self.involution_main(state))
 
     def shrink_step_size(self, state, selector_params, init_log_joint):
-        state, _ = lax.while_loop(
+        state, *extra = lax.while_loop(
             self.shrink_step_size_cond_fun,
             self.shrink_step_size_body_fun,
-            (state, selector_params, init_log_joint)
+            (self, state, selector_params, init_log_joint)
         )
 
         return state
@@ -179,27 +179,3 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
 
         return state
-    
-    @abstractmethod
-    def next_state_accepted(self, proposed_state, bwd_state, rng_key):
-        """
-        Build the final state of the `sample` method given that the MH step is accepted.
-
-        :param proposed_state: Proposed state.
-        :param bwd_state: Reversed state. Fresher than proposed_state, but `rng_key` is stale.
-        :param rng_key: Up-to-date RNG key.
-        :return: Next state.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def next_state_rejected(self, proposed_state, bwd_state, rng_key):
-        """
-        Build the final state of the `sample` method given that the MH step is rejected.
-
-        :param proposed_state: Proposed state.
-        :param bwd_state: Reversed state. Fresher than proposed_state, but `rng_key` is stale.
-        :param rng_key: Up-to-date RNG key.
-        :return: Next state.
-        """
-        raise NotImplementedError

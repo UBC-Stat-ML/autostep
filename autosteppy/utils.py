@@ -15,20 +15,28 @@ def std_normal_potential(v):
 # Taken without much changes from
 # https://github.com/pyro-ppl/numpyro/blob/master/numpyro/infer/barker.py
 def init_state_and_model(model, rng_key, model_args, model_kwargs, init_params):
-    if model is not None:
-        (
-            params_info,
-            potential_fn_gen,
-            postprocess_fn,
-            model_trace,
-        ) = infer.util.initialize_model(
-            rng_key,
-            model,
-            dynamic_args=True,
-            model_args=model_args,
-            model_kwargs=model_kwargs,
-        )
-        init_params = params_info[0]
-        model_kwargs = {} if model_kwargs is None else model_kwargs
-        potential_fn = potential_fn_gen(*model_args, **model_kwargs)
+    (
+        params_info,
+        potential_fn_gen,
+        postprocess_fn,
+        model_trace,
+    ) = infer.util.initialize_model(
+        rng_key,
+        model,
+        dynamic_args=True,
+        model_args=model_args,
+        model_kwargs=model_kwargs,
+    )
+    init_params = params_info[0]
+    model_kwargs = {} if model_kwargs is None else model_kwargs
+    potential_fn = potential_fn_gen(*model_args, **model_kwargs)
     return init_params, potential_fn, postprocess_fn
+
+# functions used withing lax.cond to create the output state for `sample` 
+def next_state_accepted(init_state, proposed_state, bwd_state, rng_key):
+    # keep everything from proposed_state except for stats (use bwd) and  rng_key
+    return proposed_state._replace(stats = bwd_state.stats, rng_key = rng_key)
+
+def next_state_rejected(init_state, proposed_state, bwd_state, rng_key):
+    # keep everything from init_state except for stats (use bwd) and  rng_key
+    return init_state._replace(stats = bwd_state.stats, rng_key = rng_key)
