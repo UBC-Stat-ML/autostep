@@ -5,8 +5,9 @@ import jax.numpy as jnp
 
 class StepSizeSelector(ABC):
 
+    @staticmethod
     @abstractmethod
-    def draw_parameters(self, rng_key):
+    def draw_parameters(rng_key):
         """
         Draw the random parameters used (if any) by the selector.
 
@@ -15,8 +16,9 @@ class StepSizeSelector(ABC):
         """
         raise NotImplementedError
 
+    @staticmethod
     @abstractmethod
-    def should_grow(self, parameters, log_diff):
+    def should_grow(parameters, log_diff):
         """
         Decide if step size should grow based on `parameters` and current log joint
         difference `log_diff`.
@@ -26,8 +28,9 @@ class StepSizeSelector(ABC):
         """
         raise NotImplementedError
 
+    @staticmethod
     @abstractmethod
-    def should_shrink(self, parameters, log_diff):
+    def should_shrink(parameters, log_diff):
         """
         Decide if step size should shrink based on `parameters` and current log joint
         difference `log_diff`.
@@ -46,13 +49,16 @@ class AsymmetricSelector(StepSizeSelector):
     Asymmetric selector. 
     """
 
-    def draw_parameters(self, rng_key):
+    @staticmethod
+    def draw_parameters(rng_key):
         return _draw_log_unif_bounds(rng_key)
 
-    def should_grow(self, bounds, log_diff):
+    @staticmethod
+    def should_grow(bounds, log_diff):
         return log_diff > bounds[1]
 
-    def should_shrink(self, bounds, log_diff):
+    @staticmethod
+    def should_shrink(bounds, log_diff):
         return jnp.logical_or(~lax.is_finite(log_diff), log_diff < bounds[0])
 
 
@@ -61,13 +67,16 @@ class SymmetricSelector(StepSizeSelector):
     Symmetric selector. 
     """
 
-    def draw_parameters(self, rng_key):
+    @staticmethod
+    def draw_parameters(rng_key):
         return _draw_log_unif_bounds(rng_key)
 
-    def should_grow(self, bounds, log_diff):
+    @staticmethod
+    def should_grow(bounds, log_diff):
         return lax.abs(log_diff) + bounds[1] < 0
 
-    def should_shrink(self, bounds, log_diff):
+    @staticmethod
+    def should_shrink(bounds, log_diff):
         invalid_log_diff = ~lax.is_finite(log_diff)
         return jnp.logical_or(invalid_log_diff, lax.abs(log_diff) + bounds[0] > 0)
 
@@ -77,12 +86,15 @@ class FixedStepSizeSelector(StepSizeSelector):
     A dummy selector that never adjusts the step size. 
     """
 
-    def draw_parameters(self, rng_key):
+    @staticmethod
+    def draw_parameters(rng_key):
         return None
 
-    def should_grow(self, bounds, log_diff):
+    @staticmethod
+    def should_grow(bounds, log_diff):
         return False
 
-    def should_shrink(self, bounds, log_diff):
+    @staticmethod
+    def should_shrink(bounds, log_diff):
         return False
 

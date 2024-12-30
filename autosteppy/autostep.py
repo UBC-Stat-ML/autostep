@@ -1,5 +1,7 @@
 from abc import ABCMeta, abstractmethod
+from functools import partial
 
+from jax import jit
 from jax import lax
 from jax import random
 from numpyro import infer
@@ -41,31 +43,10 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         :return: State with updated auxiliary variables.
         """
         raise NotImplementedError
-    
-    def reset_exponent(self, state):
-        return state._replace(exponent = 0)
-    
-    def step_size(self, state):
-        """
-        Compute the step size corresponding to the current exponent.
-
-        :param state: Current state.
-        :return: Step size.
-        """
-        return self._base_step_size * (2. ** state.exponent)
-
-    def involution(self, state):
-        """
-        Apply the (full) involution, which must satisfy for all `state`,
-        `state == involution(involution(state))`.
-
-        :param state: Current state.
-        :return: Updated state.
-        """
-        return self.involution_aux(self.involution_main(state))
-
+        
+    @staticmethod
     @abstractmethod
-    def involution_main(self, state):
+    def involution_main(step_size, state):
         """
         Apply the main part of the involution. This is usually the part that 
         modifies the variables of interests.
@@ -75,8 +56,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         raise NotImplementedError
     
+    @staticmethod
     @abstractmethod
-    def involution_aux(self, state):
+    def involution_aux(step_size, state):
         """
         Apply the auxiliary part of the involution. This is usually the part that
         is not necessary to implement for the respective involutive MCMC algorithm
@@ -90,7 +72,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     def sample(self, state, model_args, model_kwargs):
         # reset exponent, refresh auxiliary variables (e.g., momentum), update
         # the log joint density, and finally check if the latter is finite
-        state = self.update_log_joint(self.refresh_aux_vars(self.reset_exponent(state)))
+        state = self.update_log_joint(self.refresh_aux_vars(utils.reset_exponent(state)))
         utils.checkified_is_finite(state.log_joint)
 
         # draw selector parameters
@@ -100,12 +82,13 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         # forward step size search
         proposed_state = self.auto_step_size(state, selector_params)
+        fwd_step_size = utils.step_size(self._base_step_size, proposed_state.exponent)
 
         # backward step size search
-        bwd_state = self.reset_exponent(self.involution_aux(proposed_state)) # bwd state: apply 2nd half of involution, then reset exponent
+        bwd_state = self.involution_aux(fwd_step_size, proposed_state)
+        bwd_state = utils.reset_exponent(bwd_state)
         bwd_state = self.auto_step_size(bwd_state, selector_params)
         reversibility_passed = proposed_state.exponent == bwd_state.exponent
-        avg_fwd_bwd_step_size = (self.step_size(proposed_state) + self.step_size(bwd_state)) / 2
 
         # Metropolis-Hastings step
         log_joint_diff = proposed_state.log_joint - state.log_joint
@@ -121,6 +104,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
 
         # collect statistics and return
+        bwd_step_size = utils.step_size(self._base_step_size, bwd_state.exponent)
+        avg_fwd_bwd_step_size = 0.5 * (fwd_step_size + bwd_step_size)
         new_stats = statistics.record_post_sample_stats(
             next_state.stats, avg_fwd_bwd_step_size, acc_prob
         )
@@ -128,7 +113,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     def auto_step_size(self, state, selector_params):
         init_log_joint = state.log_joint
-        next_state = self.update_log_joint(self.involution_main(state))
+        init_step_size = utils.step_size(self._base_step_size, state.exponent)
+        next_state = self.update_log_joint(self.involution_main(init_step_size, state))
 
         # try shrinking (no-op if selector decides not to shrink)
         next_state = self.shrink_step_size(next_state, selector_params, init_log_joint)
@@ -137,43 +123,28 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         next_state = self.grow_step_size(next_state, selector_params, init_log_joint)
 
         return next_state
-
-    def shrink_step_size_cond_fun(self, state, selector_params, init_log_joint):
-        log_diff = state.log_joint - init_log_joint
-        return self.selector.should_shrink(selector_params, log_diff)
-
-    def shrink_step_size_body_fun(self, state, selector_params, init_log_joint):
-        state = state._replace(exponent = state.exponent - 1)
-        return self.update_log_joint(self.involution_main(state))
-
+    
     def shrink_step_size(self, state, selector_params, init_log_joint):
-        new_state, *extra = lax.while_loop(
-            self.shrink_step_size_cond_fun,
-            self.shrink_step_size_body_fun,
-            (state, selector_params, init_log_joint)
+        (new_state, *extra,) = lax.while_loop(
+            utils.gen_shrink_step_size_cond_fun(self.selector),
+            utils.gen_mod_step_size_body_fun(self, -1),
+            (state, selector_params, init_log_joint, self._base_step_size)
         )
         return new_state
     
-    def grow_step_size_cond_fun(self, state, selector_params, init_log_joint):
-        log_diff = state.log_joint - init_log_joint
-        return self.selector.should_grow(selector_params, log_diff)
-
-    def grow_step_size_body_fun(self, state, selector_params, init_log_joint):
-        state = state._replace(exponent = state.exponent + 1)
-        return self.update_log_joint(self.involution_main(state))
-
-    def grow_step_size(self, state, selector_params, init_log_joint):
-        state, _ = lax.while_loop(
-            self.grow_step_size_cond_fun,
-            self.grow_step_size_body_fun,
-            (state, selector_params, init_log_joint)
+    def grow_step_size(self, state, selector_params, init_log_joint):        
+        (new_state, *extra,) = lax.while_loop(
+            utils.gen_grow_step_size_cond_fun(self.selector),
+            utils.gen_mod_step_size_body_fun(self, +1),
+            (state, selector_params, init_log_joint, self._base_step_size)
         )
 
         # deduct 1 step to avoid cliffs, but only do this if we actually entered the loop
-        state = lax.cond(
-            state.exponent > 0,
+        new_state = lax.cond(
+            new_state.exponent > 0,
             lambda s: s._replace(exponent = s.exponent - 1),
             util.identity,
-            state
+            new_state
         )
-        return state
+        return new_state
+
