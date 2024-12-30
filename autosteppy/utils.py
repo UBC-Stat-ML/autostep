@@ -53,28 +53,34 @@ def step_size(base_step_size, exponent):
 def gen_shrink_step_size_cond_fun(selector):
     def shrink_step_size_cond_fun(args):
         state, selector_params, init_log_joint, _ = args
-        log_diff = mod_step_size_cond_common(state, selector_params, init_log_joint)
-        return selector.should_shrink(selector_params, log_diff)
+        log_diff = state.log_joint - init_log_joint
+        decision = selector.should_shrink(selector_params, log_diff)
+        jax.debug.print("Shrink? Log-diff: {l} + bounds: ({a},{b})  => Decision: {d}", 
+                ordered=True, l=log_diff, a=selector_params[0], b=selector_params[1], d=decision)
+        return decision
     return shrink_step_size_cond_fun
 
 def gen_grow_step_size_cond_fun(selector):
     def grow_step_size_cond_fun(args):
         state, selector_params, init_log_joint, _ = args
-        log_diff = mod_step_size_cond_common(state, selector_params, init_log_joint)
-        return selector.should_shrink(selector_params, log_diff)
+        log_diff = state.log_joint - init_log_joint
+        decision = selector.should_grow(selector_params, log_diff)
+        jax.debug.print("Grow? Log-diff: {l} + bounds: ({a},{b})  => Decision: {d}", 
+                ordered=True, l=log_diff, a=selector_params[0], b=selector_params[1], d=decision)
+        return decision
     return grow_step_size_cond_fun
-
-def mod_step_size_cond_common(state, selector_params, init_log_joint):
-    log_diff = state.log_joint - init_log_joint
-    jax.debug.print(f"Log-diff: {log_diff}\tBounds: {selector_params}")
-    return log_diff
 
 def gen_mod_step_size_body_fun(stepper, direction):
     def mod_step_size_body_fun(args):
         state, *extra, base_step_size = args
-        state = state._replace(exponent = state.exponent + direction)
-        eps = step_size(base_step_size, state.exponent)
-        jax.debug.print(f"Direction: {direction}\tStep size: {eps}\tn_pot_evals: {state.stats.n_pot_evals}")
-        new_state = stepper.update_log_joint(stepper.involution_main(eps, state))
+        new_state = mod_step_size_body_inner(stepper, direction, state, base_step_size)
         return (new_state, *extra, base_step_size,)
     return mod_step_size_body_fun
+
+def mod_step_size_body_inner(stepper, direction, state, base_step_size):
+    state = state._replace(exponent = state.exponent + direction)
+    eps = step_size(base_step_size, state.exponent)
+    new_state = stepper.update_log_joint(stepper.involution_main(eps, state))
+    jax.debug.print("Direction: {d}, Step size: {eps}, n_pot_evals: {n}", 
+                ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
+    return new_state

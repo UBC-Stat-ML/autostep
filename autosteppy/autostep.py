@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
-from functools import partial
 
-from jax import jit
+import jax
 from jax import lax
 from jax import random
 from numpyro import infer
@@ -11,6 +10,12 @@ from autosteppy import utils
 from autosteppy import statistics
 
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
+
+    def init_mod_step_size_loop_funs(self):
+        self.shrink_step_size_cond_fun = utils.gen_shrink_step_size_cond_fun(self.selector)
+        self.shrink_step_size_body_fun = utils.gen_mod_step_size_body_fun(self, -1)
+        self.grow_step_size_cond_fun = utils.gen_grow_step_size_cond_fun(self.selector)
+        self.grow_step_size_body_fun = utils.gen_mod_step_size_body_fun(self, 1)
 
     @property
     def model(self):
@@ -58,7 +63,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     
     @staticmethod
     @abstractmethod
-    def involution_aux(step_size, state):
+    def involution_aux(state):
         """
         Apply the auxiliary part of the involution. This is usually the part that
         is not necessary to implement for the respective involutive MCMC algorithm
@@ -81,12 +86,15 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         selector_params = self.selector.draw_parameters(selector_key)
 
         # forward step size search
+        jax.debug.print("fwd autostep: init_log_joint={i}", ordered=True, i=state.log_joint)
         proposed_state = self.auto_step_size(state, selector_params)
         fwd_step_size = utils.step_size(self._base_step_size, proposed_state.exponent)
+        jax.debug.print("fwd done: step_size={s}, log_joint={l}", ordered=True,
+                         s=fwd_step_size,l=proposed_state.log_joint)
 
         # backward step size search
-        bwd_state = self.involution_aux(fwd_step_size, proposed_state)
-        bwd_state = utils.reset_exponent(bwd_state)
+        bwd_state = utils.reset_exponent(self.involution_aux(proposed_state))
+        jax.debug.print("bwd autostep: init_log_joint={i}", ordered=True, i=state.log_joint)
         bwd_state = self.auto_step_size(bwd_state, selector_params)
         reversibility_passed = proposed_state.exponent == bwd_state.exponent
 
@@ -126,23 +134,23 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     
     def shrink_step_size(self, state, selector_params, init_log_joint):
         (new_state, *extra,) = lax.while_loop(
-            utils.gen_shrink_step_size_cond_fun(self.selector),
-            utils.gen_mod_step_size_body_fun(self, -1),
+            self.shrink_step_size_cond_fun,
+            self.shrink_step_size_body_fun,
             (state, selector_params, init_log_joint, self._base_step_size)
         )
         return new_state
     
     def grow_step_size(self, state, selector_params, init_log_joint):        
         (new_state, *extra,) = lax.while_loop(
-            utils.gen_grow_step_size_cond_fun(self.selector),
-            utils.gen_mod_step_size_body_fun(self, +1),
+            self.grow_step_size_cond_fun,
+            self.grow_step_size_body_fun,
             (state, selector_params, init_log_joint, self._base_step_size)
         )
 
         # deduct 1 step to avoid cliffs, but only do this if we actually entered the loop
         new_state = lax.cond(
             new_state.exponent > 0,
-            lambda s: s._replace(exponent = s.exponent - 1),
+            lambda s: utils.mod_step_size_body_inner(self, -1, s, self._base_step_size),
             util.identity,
             new_state
         )

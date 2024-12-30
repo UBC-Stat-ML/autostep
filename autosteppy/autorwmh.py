@@ -40,6 +40,7 @@ class AutoRWMH(autostep.AutoStep):
         self._base_step_size = base_step_size
         self._postprocess_fn = None
         self.selector = selector
+        self.init_mod_step_size_loop_funs()
         
     @property
     def sample_field(self):
@@ -82,6 +83,6 @@ class AutoRWMH(autostep.AutoStep):
         return state._replace(x = x_new)
     
     @staticmethod
-    def involution_aux(step_size, state):
+    def involution_aux(state):
         return state._replace(v_flat = -state.v_flat)
 
