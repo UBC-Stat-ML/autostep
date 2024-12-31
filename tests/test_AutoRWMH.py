@@ -1,3 +1,5 @@
+from tests import utils as testutils
+
 import unittest
 import jax
 from jax import random
@@ -9,6 +11,7 @@ from autostep import autorwmh
 from autostep import selectors
 from autostep import statistics
 from autostep import utils
+
 
 class TestAutoRWMH(unittest.TestCase):
 
@@ -56,6 +59,13 @@ class TestAutoRWMH(unittest.TestCase):
         mcmc = MCMC(kernel, num_warmup=0, num_samples=2**10, progress_bar=False)
         mcmc.run(run_key, init_params=init_val)
         self.assertTrue(jnp.all(mcmc.last_state.x == true_mean))
+
+    def test_numpyro_model(self):
+        kernel = autorwmh.AutoRWMH(testutils.toy_unid, base_step_size=0.55)
+        mcmc = MCMC(kernel, num_warmup=0, num_samples=2**13, progress_bar=False)
+        mcmc.run(random.key(9), 100, n_heads=50)
+        samples = mcmc.get_samples()
+        self.assertTrue(abs((samples["p1"] * samples["p2"]).mean() - 0.5) < 0.02)
 
 if __name__ == '__main__':
     unittest.main()
