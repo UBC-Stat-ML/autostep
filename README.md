@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-pip install "autostep @ git+ssh://git@github.com/miguelbiron/autostep.git"
+pip install "autostep @ git+ssh://git@github.com/UBC-Stat-ML/autostep.git"
 ```
 
 ## Eight-schools example
