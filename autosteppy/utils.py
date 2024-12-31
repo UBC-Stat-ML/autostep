@@ -9,6 +9,12 @@ def proto_checkified_is_finite(x):
 
 checkified_is_finite = checkify.checkify(proto_checkified_is_finite)
 
+def proto_checkified_is_zero(x):
+  checkify.check(x==0, f"Expected zero but x = {x}")
+  return
+
+checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
+
 def std_normal_potential(v):
     return lax.dot(v,v)
 
@@ -43,44 +49,39 @@ def next_state_rejected(args):
     init_state, _, bwd_state, rng_key = args
     # keep everything from init_state except for stats (use bwd) and rng_key
     return init_state._replace(stats = bwd_state.stats, rng_key = rng_key)
-
-def reset_exponent(state):
-    return state._replace(exponent = 0)
     
 def step_size(base_step_size, exponent):
     return base_step_size * (2. ** exponent)
 
-def gen_shrink_step_size_cond_fun(selector):
-    def shrink_step_size_cond_fun(args):
-        state, selector_params, init_log_joint, _ = args
-        log_diff = state.log_joint - init_log_joint
-        decision = selector.should_shrink(selector_params, log_diff)
-        jax.debug.print("Shrink? Log-diff: {l} + bounds: ({a},{b})  => Decision: {d}", 
-                ordered=True, l=log_diff, a=selector_params[0], b=selector_params[1], d=decision)
+def copy_state_extras(source, dest):
+    return dest._replace(stats = source.stats, rng_key = source.rng_key)
+
+def gen_alter_step_size_cond_fun(pred_fun):
+    def alter_step_size_cond_fun(args):
+        state, exponent, next_log_joint, init_log_joint, selector_params, *extra = args
+        log_diff = next_log_joint - init_log_joint
+        decision = pred_fun(selector_params, log_diff)
+
+        # jax.debug.print("{f}? Log-diff: {l} + bounds: ({a},{b}) => Decision: {d}", 
+        #         ordered=True, f=pred_fun.__name__, l=log_diff, a=selector_params[0], 
+        #         b=selector_params[1], d=decision)
+
         return decision
-    return shrink_step_size_cond_fun
+    return alter_step_size_cond_fun
 
-def gen_grow_step_size_cond_fun(selector):
-    def grow_step_size_cond_fun(args):
-        state, selector_params, init_log_joint, _ = args
-        log_diff = state.log_joint - init_log_joint
-        decision = selector.should_grow(selector_params, log_diff)
-        jax.debug.print("Grow? Log-diff: {l} + bounds: ({a},{b})  => Decision: {d}", 
-                ordered=True, l=log_diff, a=selector_params[0], b=selector_params[1], d=decision)
-        return decision
-    return grow_step_size_cond_fun
+def gen_alter_step_size_body_fun(kernel, direction):
+    def alter_step_size_body_fun(args):
+        state, exponent, _, *extra, base_step_size = args
+        exponent = exponent + direction
+        eps = step_size(base_step_size, exponent)
+        next_state = kernel.update_log_joint(kernel.involution_main(eps, state))
+        next_log_joint = next_state.log_joint
+        state = copy_state_extras(next_state, state)
 
-def gen_mod_step_size_body_fun(stepper, direction):
-    def mod_step_size_body_fun(args):
-        state, *extra, base_step_size = args
-        new_state = mod_step_size_body_inner(stepper, direction, state, base_step_size)
-        return (new_state, *extra, base_step_size,)
-    return mod_step_size_body_fun
+        # jax.debug.print(
+        #     "Direction: {d}, Step size: {eps}, n_pot_evals: {n}",
+        #     ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
 
-def mod_step_size_body_inner(stepper, direction, state, base_step_size):
-    state = state._replace(exponent = state.exponent + direction)
-    eps = step_size(base_step_size, state.exponent)
-    new_state = stepper.update_log_joint(stepper.involution_main(eps, state))
-    jax.debug.print("Direction: {d}, Step size: {eps}, n_pot_evals: {n}", 
-                ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
-    return new_state
+        return (state, exponent, next_log_joint, *extra, base_step_size,)
+
+    return alter_step_size_body_fun

@@ -20,7 +20,6 @@ AutoRWMHState = namedtuple(
         "x",
         "v_flat",
         "log_joint",
-        "exponent",
         "rng_key",
         "stats"
     ],
@@ -32,7 +31,7 @@ class AutoRWMH(autostep.AutoStep):
         self,
         model=None,
         potential_fn=None,
-        base_step_size=1.0,
+        base_step_size=jnp.float32(1.0),
         selector = selectors.SymmetricSelector(),
     ):
         self._model = model
@@ -40,7 +39,7 @@ class AutoRWMH(autostep.AutoStep):
         self._base_step_size = base_step_size
         self._postprocess_fn = None
         self.selector = selector
-        self.init_mod_step_size_loop_funs()
+        self.init_alter_step_size_loop_funs()
         
     @property
     def sample_field(self):
@@ -65,7 +64,6 @@ class AutoRWMH(autostep.AutoStep):
             init_params,
             jnp.zeros(x_flat_shape),
             0., # Note: not the actual log joint value; needs to be updated 
-            self._base_step_size,
             rng_key,
             statistics.AutoStepStats()
         )

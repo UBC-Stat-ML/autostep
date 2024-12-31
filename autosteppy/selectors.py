@@ -88,7 +88,7 @@ class FixedStepSizeSelector(StepSizeSelector):
 
     @staticmethod
     def draw_parameters(rng_key):
-        return None
+        return jnp.zeros((2,))
 
     @staticmethod
     def should_grow(bounds, log_diff):

@@ -16,12 +16,12 @@ class TestAutoRWMH(unittest.TestCase):
         x = random.normal(x_key, d)
         v_flat = random.normal(v_key, d)
         r = autorwmh.AutoRWMH()
-        s = autorwmh.AutoRWMHState(x, v_flat, 0., -1, rng_key, statistics.AutoStepStats())
-        step_size = utils.step_size(r._base_step_size, s.exponent)
+        s = autorwmh.AutoRWMHState(x, v_flat, 0., rng_key, statistics.AutoStepStats())
+        step_size = utils.step_size(r._base_step_size, -1)
         s_half = r.involution_main(step_size, s)
-        s_one = r.involution_aux(step_size, s_half)
+        s_one = r.involution_aux(s_half)
         s_onehalf = r.involution_main(step_size, s_one)
-        s_two = r.involution_aux(step_size, s_onehalf)
+        s_two = r.involution_aux(s_onehalf)
         self.assertTrue(jax.tree.all(jax.tree.map(jnp.allclose, s_two, s)))
 
 

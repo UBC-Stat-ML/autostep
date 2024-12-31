@@ -1,4 +1,5 @@
 from collections import namedtuple
+from jax import numpy as jnp
 
 AutoStepStats = namedtuple(
     "AutoStepStats",
@@ -8,7 +9,7 @@ AutoStepStats = namedtuple(
         "mean_step_size",
         "mean_acc_prob"
     ],
-    defaults=(0, 0, 0., 0.)
+    defaults=(jnp.int32(0), jnp.int32(0), jnp.float32(0.0), jnp.float32(0.0))
 )
 
 def increase_n_pot_evals_by_one(stats):
