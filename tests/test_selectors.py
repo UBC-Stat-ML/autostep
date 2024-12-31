@@ -1,7 +1,7 @@
 import unittest
 import jax
 from jax import numpy as jnp
-from autosteppy import selectors
+from autostep import selectors
 
 class TestSelectors(unittest.TestCase):
 

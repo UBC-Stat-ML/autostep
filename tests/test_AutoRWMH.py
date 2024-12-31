@@ -3,9 +3,9 @@ import jax
 from jax import random
 from jax import numpy as jnp
 
-from autosteppy import autorwmh
-from autosteppy import statistics
-from autosteppy import utils
+from autostep import autorwmh
+from autostep import statistics
+from autostep import utils
 
 class TestAutoRWMH(unittest.TestCase):
 

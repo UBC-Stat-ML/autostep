@@ -6,8 +6,8 @@ from jax import random
 from numpyro import infer
 from numpyro import util
 
-from autosteppy import utils
-from autosteppy import statistics
+from autostep import utils
+from autostep import statistics
 
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 

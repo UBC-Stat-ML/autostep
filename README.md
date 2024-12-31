@@ -1,4 +1,4 @@
-# `autosteppy`
+# `autostep`
 
 ***A numpyro implementation of autoStep methods***
 

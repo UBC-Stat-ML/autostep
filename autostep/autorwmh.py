@@ -5,14 +5,11 @@ import jax
 from jax import flatten_util
 from jax import numpy as jnp
 from jax import random
-from numpyro import infer
-from numpyro import util
 
-from autosteppy import autostep
-from autosteppy import selectors
-from autosteppy import statistics
-from autosteppy import utils
-
+from autostep import autostep
+from autostep import selectors
+from autostep import statistics
+from autostep import utils
 
 AutoRWMHState = namedtuple(
     "AutoRWMHState",
