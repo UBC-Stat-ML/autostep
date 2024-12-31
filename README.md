@@ -2,6 +2,12 @@
 
 ***A numpyro implementation of autoStep methods***
 
+## Installation
+
+```bash
+pip install "autostep @ git+ssh://git@github.com/miguelbiron/autostep.git"
+```
+
 ## Eight-schools example
 
 ```python

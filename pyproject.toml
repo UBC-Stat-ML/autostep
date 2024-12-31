@@ -9,7 +9,6 @@ repository = "https://github.com/miguelbiron/autostep"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-jax = "^0.4.38"
 numpyro = "^0.16.1"
 
 [build-system]
