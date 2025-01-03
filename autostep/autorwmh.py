@@ -62,7 +62,7 @@ class AutoRWMH(autostep.AutoStep):
             jnp.zeros(x_flat_shape),
             0., # Note: not the actual log joint value; needs to be updated 
             rng_key,
-            statistics.AutoStepStats()
+            statistics.make_recorder(x_flat_shape)
         )
         return jax.device_put(init_state)
     

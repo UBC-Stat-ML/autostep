@@ -48,9 +48,9 @@ class TestAutoRWMH(unittest.TestCase):
                 kernel = autorwmh.AutoRWMH(potential_fn=f, selector=sel)
                 mcmc = MCMC(kernel, num_warmup=0, num_samples=2**12, progress_bar=False)
                 mcmc.run(run_key, init_params=init_val)
-                xs = mcmc.get_samples()
-                self.assertTrue(jnp.allclose(xs.mean(axis=0), true_mean, atol=tol, rtol=tol))
-                self.assertTrue(jnp.allclose(xs.var(axis=0), true_var, atol=tol, rtol=tol))
+                stats = mcmc.last_state.stats
+                self.assertTrue(jnp.allclose(stats.means_flat, true_mean, atol=tol, rtol=tol))
+                self.assertTrue(jnp.allclose(stats.vars_flat, true_var, atol=tol, rtol=tol))
         
         # test reducibility of autoRWMH with asymmetric selector when starting at the mode
         init_val = jnp.array([true_mean, true_mean])

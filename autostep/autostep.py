@@ -125,7 +125,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         bwd_step_size = utils.step_size(self._base_step_size, bwd_exponent)
         avg_fwd_bwd_step_size = 0.5 * (fwd_step_size + bwd_step_size)
         new_stats = statistics.record_post_sample_stats(
-            next_state.stats, avg_fwd_bwd_step_size, acc_prob
+            next_state.stats, avg_fwd_bwd_step_size, acc_prob,
+            jax.flatten_util.ravel_pytree(getattr(next_state, self.sample_field))[0]
         )
         return next_state._replace(stats = new_stats)
 
