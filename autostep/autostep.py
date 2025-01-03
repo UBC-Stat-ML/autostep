@@ -1,8 +1,11 @@
 from abc import ABCMeta, abstractmethod
 
 import jax
+from jax import flatten_util
 from jax import lax
+from jax import numpy as jnp
 from jax import random
+
 from numpyro import infer
 from numpyro import util
 
@@ -18,6 +21,40 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         self.grow_step_size_cond_fun = utils.gen_alter_step_size_cond_fun(
             self.selector.should_grow)
         self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, 1)
+    
+    @staticmethod
+    @abstractmethod
+    def init_state(initial_params, sample_field_flat_shape, rng_key):
+        """
+        Initialize the state of the sampler.
+
+        :param initial_params: Initial values for the latent parameters.
+        :param sample_field_flat_shape: Shape of the flattened latent variables 
+        :param rng_key: The PRNG key that the sampler should use for simulation.
+        :return: The initial state of the sampler.
+        """
+        raise NotImplementedError
+
+    # note: this is called by the enclosing numpyro.infer.MCMC object
+    def init(self, rng_key, num_warmup, initial_params, model_args, model_kwargs):
+        # initialize loop helpers
+        self.init_alter_step_size_loop_funs()
+
+        # initialize model if it exists, and if so, use it to get initial parameters
+        if self._model is not None:
+            rng_key, rng_key_init = random.split(rng_key)
+            initial_params, self._potential_fn, self._postprocess_fn = utils.init_model(
+                self._model, rng_key_init, model_args, model_kwargs
+            )
+        
+        # initialize the preconditioner
+        sample_field_flat_shape = jnp.shape(flatten_util.ravel_pytree(initial_params)[0])
+        self.preconditioner.init(sample_field_flat_shape)
+
+        # initialize the state of the autostep sampler
+        initial_state = self.init_state(initial_params, sample_field_flat_shape, rng_key)
+
+        return jax.device_put(initial_state)
 
     @property
     def model(self):

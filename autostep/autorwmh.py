@@ -7,6 +7,7 @@ from jax import numpy as jnp
 from jax import random
 
 from autostep import autostep
+from autostep import preconditioning
 from autostep import selectors
 from autostep import statistics
 from autostep import utils
@@ -30,14 +31,25 @@ class AutoRWMH(autostep.AutoStep):
         potential_fn=None,
         base_step_size=jnp.float32(1.0),
         selector = selectors.SymmetricSelector(),
+        preconditioner = preconditioning.MixDiagonalPreconditioner()
     ):
         self._model = model
         self._potential_fn = potential_fn
         self._base_step_size = base_step_size
         self._postprocess_fn = None
         self.selector = selector
-        self.init_alter_step_size_loop_funs()
-        
+        self.preconditioner = preconditioner
+
+    @staticmethod
+    def init_state(initial_params, sample_field_flat_shape, rng_key):
+        return AutoRWMHState(
+            initial_params,
+            jnp.zeros(sample_field_flat_shape),
+            0., # Note: not the actual log joint value; needs to be updated 
+            rng_key,
+            statistics.make_recorder(sample_field_flat_shape)
+        )
+
     @property
     def sample_field(self):
         return "x"
@@ -47,24 +59,6 @@ class AutoRWMH(autostep.AutoStep):
         new_log_joint = -self._potential_fn(x) - utils.std_normal_potential(v_flat)
         new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
         return state._replace(log_joint = new_log_joint, stats = new_stats)
-
-    def init(self, rng_key, num_warmup, init_params, model_args, model_kwargs):        
-        if self._model is not None:
-            # initialize the state and the model
-            # store potential fn and postprocess fn
-            rng_key, rng_key_init = random.split(rng_key)
-            init_params, self._potential_fn, self._postprocess_fn = utils.init_state_and_model(
-                self._model, rng_key_init, model_args, model_kwargs, init_params
-            )
-        x_flat_shape = jnp.shape(flatten_util.ravel_pytree(init_params)[0])
-        init_state = AutoRWMHState(
-            init_params,
-            jnp.zeros(x_flat_shape),
-            0., # Note: not the actual log joint value; needs to be updated 
-            rng_key,
-            statistics.make_recorder(x_flat_shape)
-        )
-        return jax.device_put(init_state)
     
     def refresh_aux_vars(self, state):
         rng_key, v_key = random.split(state.rng_key)
