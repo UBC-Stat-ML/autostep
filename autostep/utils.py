@@ -1,7 +1,12 @@
 import jax
 from jax import lax
+from jax import numpy as jnp
 from jax.experimental import checkify
 from numpyro import infer
+
+###############################################################################
+# basic utilities
+###############################################################################
 
 def proto_checkified_is_finite(x):
   checkify.check(lax.is_finite(x), f"Found non-finite value x = {x}")
@@ -17,6 +22,26 @@ checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 
 def std_normal_potential(v):
     return lax.dot(v,v)
+
+def log2_iceil(x):
+    """
+    Integer ceiling of log2(x).
+    """
+    return lax.ceil(jnp.log2(x)).astype(int)
+
+def ilog2(x):
+    """
+    Binary logarithm log2(x) for ints.
+    """
+    return lax.while_loop(
+        lambda t: t[1]>1,
+        lambda t: (t[0]+1, lax.shift_right_arithmetic(t[1], 1)),
+        (0,x)
+    )[0].astype(int)
+
+###############################################################################
+# kernel initialization
+###############################################################################
 
 # Taken without much changes from
 # https://github.com/pyro-ppl/numpyro/blob/master/numpyro/infer/barker.py
@@ -57,7 +82,7 @@ def next_state_rejected(args):
 ###############################################################################
 
 def step_size(base_step_size, exponent):
-    return base_step_size * (2. ** exponent)
+    return base_step_size * (2.0 ** exponent)
 
 def copy_state_extras(source, dest):
     return dest._replace(stats = source.stats, rng_key = source.rng_key)
@@ -77,10 +102,10 @@ def gen_alter_step_size_cond_fun(pred_fun):
 
 def gen_alter_step_size_body_fun(kernel, direction):
     def alter_step_size_body_fun(args):
-        state, exponent, _, *extra, base_step_size = args
+        state, exponent, _, *extra, base_step_size, diag_precond = args
         exponent = exponent + direction
         eps = step_size(base_step_size, exponent)
-        next_state = kernel.update_log_joint(kernel.involution_main(eps, state))
+        next_state = kernel.update_log_joint(kernel.involution_main(eps, state, diag_precond))
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)
 
@@ -88,6 +113,6 @@ def gen_alter_step_size_body_fun(kernel, direction):
         #     "Direction: {d}, Step size: {eps}, n_pot_evals: {n}",
         #     ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
 
-        return (state, exponent, next_log_joint, *extra, base_step_size,)
+        return (state, exponent, next_log_joint, *extra, base_step_size, diag_precond)
 
     return alter_step_size_body_fun

@@ -31,13 +31,15 @@ class AutoRWMH(autostep.AutoStep):
         potential_fn=None,
         base_step_size=jnp.float32(1.0),
         selector = selectors.SymmetricSelector(),
+        estimated_std_devs=None,
         preconditioner = preconditioning.MixDiagonalPreconditioner()
     ):
         self._model = model
         self._potential_fn = potential_fn
-        self._base_step_size = base_step_size
         self._postprocess_fn = None
+        self.base_step_size = base_step_size
         self.selector = selector
+        self.estimated_std_devs = estimated_std_devs
         self.preconditioner = preconditioner
 
     @staticmethod
@@ -66,9 +68,9 @@ class AutoRWMH(autostep.AutoStep):
         return state._replace(v_flat = v_flat, rng_key = rng_key)
     
     @staticmethod
-    def involution_main(step_size, state):
+    def involution_main(step_size, state, diag_precond):
         x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)
-        x_new = unravel_fn(x_flat + step_size * state.v_flat)
+        x_new = unravel_fn(x_flat + step_size * diag_precond * state.v_flat)
         return state._replace(x = x_new)
     
     @staticmethod
