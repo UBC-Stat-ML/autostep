@@ -24,6 +24,21 @@ AutoRWMHState = namedtuple(
         "estimated_std_devs"
     ],
 )
+"""
+A :func:`~collections.namedtuple` defining the state of the ``AutoRWMH`` kernel.
+It consists of the fields:
+
+ - **x** - the sample field.
+ - **v_flat** - flattened velocity vector.
+ - **log_joint** - joint log density of ``(x,v_flat)``.
+ - **rng_key** - random number generator key.
+ - **stats** - an ``AutoStepStats`` object.
+ - **base_step_size** - the initial step size. Fixed within a round but updated
+   at the end of each adaptation round.
+ - **estimated_std_devs** - the current best guess of the standard deviations of the
+   flattened sample field. Fixed within a round but updated at the end of each 
+   adaptation round.
+"""
 
 class AutoRWMH(autostep.AutoStep):
 
@@ -48,7 +63,7 @@ class AutoRWMH(autostep.AutoStep):
             jnp.zeros(sample_field_flat_shape),
             0., # Note: not the actual log joint value; needs to be updated 
             rng_key,
-            statistics.make_recorder(sample_field_flat_shape),
+            statistics.make_stats_recorder(sample_field_flat_shape),
             1.0,
             jnp.ones(sample_field_flat_shape)
         )

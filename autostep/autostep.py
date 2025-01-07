@@ -61,7 +61,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     
     def get_diagnostics_str(self, state):
         return "base_step_size {:.2e}. mean_acc_prob={:.2f}".format(
-            state.base_step_size, state.stats.mean_acc_prob
+            state.base_step_size, state.stats.adapt_stats.mean_acc_prob
         )
 
     def postprocess_fn(self, model_args, model_kwargs):
@@ -231,28 +231,42 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return state, exponent
     
     def adapt(self, state):
+        """
+        Round-based adaptation, as described in Biron-Lattes et al. (2024).
+
+        Currently this updates `base_step_size` and `estimated_std_devs`.
+        At the end, it builds a fresh recorder `state.stats`.
+
+        :param state: Current state.
+        :return: 
+        """
         stats = state.stats
         round = utils.current_round(stats.n_samples)
-        new_base_step_size, new_estimated_std_devs = lax.cond(
+        new_base_step_size, new_estimated_std_devs, new_adapt_stats = lax.cond(
             jnp.logical_and(
                 round <= self.adapt_rounds,                              # are we still adapting?
                 stats.n_samples == utils.last_sample_idx_in_round(round) # are we at the end of a round?
             ),
             lambda t: (
-                stats.mean_step_size, 
+                t[2].mean_step_size, 
                 jnp.where(
-                    stats.vars_flat > 0,
-                    lax.sqrt(stats.vars_flat),
-                    t[1] # use the old estimated std dev in case of 0 (which is inited as all ones)
-                )
+                    t[2].vars_flat > 0,
+                    lax.sqrt(t[2].vars_flat),
+                    t[1] # use the old estimated std dev in case of 0 (which is initialized as ones)
+                ),
+                statistics.empty_adapt_stats_recorder(t[2])
             ),
             util.identity,
-            (state.base_step_size, state.estimated_std_devs)
+            (state.base_step_size, state.estimated_std_devs, stats.adapt_stats)
         )
+        new_stats = stats._replace(adapt_stats = new_adapt_stats)
         state = state._replace(
-            base_step_size=new_base_step_size, estimated_std_devs=new_estimated_std_devs)
-        # jax.debug.print(
-        #     "n_samples={n},round={r},base_step_size={b}, estimated_std_devs={e}", ordered=True,
-        #     n=stats.n_samples,r=round,b=state.base_step_size, e=state.estimated_std_devs)
+            base_step_size = new_base_step_size, estimated_std_devs = new_estimated_std_devs,
+            stats = new_stats
+        )
+        jax.debug.print(
+            "n_samples={n},round={r},sample_idx={s},base_step_size={b}, estimated_std_devs={e}", ordered=True,
+            n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
+            b=state.base_step_size, e=state.estimated_std_devs)
         return state
 
