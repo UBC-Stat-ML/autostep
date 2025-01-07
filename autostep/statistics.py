@@ -11,12 +11,12 @@ AutoStepStats = namedtuple(
         "means_flat",
         "vars_flat"
     ],
-    defaults=(jnp.int32(0), jnp.int32(0), jnp.float32(0.0), jnp.float32(0.0), None, None)
+    defaults=(0, 0, 0.0, 0.0, None, None)
 )
 
 def make_recorder(sample_field_flat_shape):
     return AutoStepStats(
-        jnp.int32(0), jnp.int32(0), jnp.float32(0.0), jnp.float32(0.0),
+        0, 0, 0.0, 0.0,
         jnp.zeros(sample_field_flat_shape), jnp.zeros(sample_field_flat_shape)
     )
 

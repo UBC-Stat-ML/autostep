@@ -23,8 +23,8 @@ class TestAutoRWMH(unittest.TestCase):
         v_flat = random.normal(v_key, d)
         diag_precond = random.exponential(prec_key, d)
         r = autorwmh.AutoRWMH()
-        s = autorwmh.AutoRWMHState(x, v_flat, 0., rng_key, statistics.AutoStepStats())
-        step_size = utils.step_size(r.base_step_size, -1)
+        s = autorwmh.AutoRWMHState(x, v_flat, 0., rng_key, statistics.AutoStepStats(), 1.0, None)
+        step_size = utils.step_size(s.base_step_size, -1)
         s_half = r.involution_main(step_size, s, diag_precond)
         s_one = r.involution_aux(s_half)
         s_onehalf = r.involution_main(step_size, s_one, diag_precond)
@@ -62,7 +62,7 @@ class TestAutoRWMH(unittest.TestCase):
         self.assertTrue(jnp.all(mcmc.last_state.x == true_mean))
 
     def test_numpyro_model(self):
-        kernel = autorwmh.AutoRWMH(testutils.toy_unid, base_step_size=0.55)
+        kernel = autorwmh.AutoRWMH(testutils.toy_unid)
         mcmc = MCMC(kernel, num_warmup=0, num_samples=2**13, progress_bar=False)
         mcmc.run(random.key(9), 100, n_heads=50)
         samples = mcmc.get_samples()

@@ -19,7 +19,9 @@ AutoRWMHState = namedtuple(
         "v_flat",
         "log_joint",
         "rng_key",
-        "stats"
+        "stats",
+        "base_step_size",
+        "estimated_std_devs"
     ],
 )
 
@@ -29,27 +31,26 @@ class AutoRWMH(autostep.AutoStep):
         self,
         model=None,
         potential_fn=None,
-        base_step_size=jnp.float32(1.0),
         selector = selectors.SymmetricSelector(),
-        estimated_std_devs=None,
         preconditioner = preconditioning.MixDiagonalPreconditioner()
     ):
         self._model = model
         self._potential_fn = potential_fn
         self._postprocess_fn = None
-        self.base_step_size = base_step_size
         self.selector = selector
-        self.estimated_std_devs = estimated_std_devs
         self.preconditioner = preconditioner
 
     @staticmethod
-    def init_state(initial_params, sample_field_flat_shape, rng_key):
+    def init_state(initial_params, rng_key):
+        sample_field_flat_shape = jnp.shape(flatten_util.ravel_pytree(initial_params)[0])
         return AutoRWMHState(
             initial_params,
             jnp.zeros(sample_field_flat_shape),
             0., # Note: not the actual log joint value; needs to be updated 
             rng_key,
-            statistics.make_recorder(sample_field_flat_shape)
+            statistics.make_recorder(sample_field_flat_shape),
+            1.0,
+            jnp.ones(sample_field_flat_shape)
         )
 
     @property

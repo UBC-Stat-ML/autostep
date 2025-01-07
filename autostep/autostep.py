@@ -37,8 +37,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     # note: this is called by the enclosing numpyro.infer.MCMC object
     def init(self, rng_key, num_warmup, initial_params, model_args, model_kwargs):
-        # determine number of adaptation rounds as ~ log2(num_warmup)
-        self.adapt_rounds = utils.log2_iceil(lax.max(1, num_warmup))
+        # determine number of adaptation rounds
+        self.adapt_rounds = utils.num_warmup_to_adapt_rounds(num_warmup)
 
         # initialize loop helpers
         self.init_alter_step_size_loop_funs()
@@ -50,12 +50,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 self._model, rng_key_init, model_args, model_kwargs
             )
         
-        # initialize estimated std deviations to all ones
-        sample_field_flat_shape = jnp.shape(flatten_util.ravel_pytree(initial_params)[0])
-        self.estimated_std_devs = jnp.ones(sample_field_flat_shape)
-
         # initialize the state of the autostep sampler
-        initial_state = self.init_state(initial_params, sample_field_flat_shape, rng_key)
+        initial_state = self.init_state(initial_params, rng_key)
 
         return jax.device_put(initial_state)
 
@@ -63,6 +59,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     def model(self):
         return self._model
     
+    def get_diagnostics_str(self, state):
+        return "base_step_size {:.2e}. mean_acc_prob={:.2f}".format(
+            state.base_step_size, state.stats.mean_acc_prob
+        )
+
     def postprocess_fn(self, model_args, model_kwargs):
         if self._postprocess_fn is None:
             return util.identity
@@ -129,7 +130,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         rng_key, precond_key, selector_key = random.split(state.rng_key, 3)
         state = state._replace(rng_key = rng_key) # always update the state with the modified key!
         diag_precond = self.preconditioner.build_diag_precond(
-            self.estimated_std_devs, precond_key)
+            state.estimated_std_devs, precond_key)
 
         # draw selector parameters
         selector_params = self.selector.draw_parameters(selector_key)
@@ -138,7 +139,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # jax.debug.print("fwd autostep: init_log_joint={i}", ordered=True, i=state.log_joint)
         state, fwd_exponent = self.auto_step_size(
             state, selector_params, diag_precond)
-        fwd_step_size = utils.step_size(self.base_step_size, fwd_exponent)
+        fwd_step_size = utils.step_size(state.base_step_size, fwd_exponent)
         proposed_state = self.update_log_joint(self.involution_main(
             fwd_step_size, state, diag_precond))
         # jax.debug.print(
@@ -170,7 +171,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
 
         # collect statistics
-        bwd_step_size = utils.step_size(self.base_step_size, bwd_exponent)
+        bwd_step_size = utils.step_size(state.base_step_size, bwd_exponent)
         avg_fwd_bwd_step_size = 0.5 * (fwd_step_size + bwd_step_size)
         new_stats = statistics.record_post_sample_stats(
             next_state.stats, avg_fwd_bwd_step_size, acc_prob,
@@ -179,36 +180,14 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         next_state = next_state._replace(stats = new_stats)
 
         # maybe adapt
-        # TODO: put this in a function to make it reusable elsewhere
-        current_round = utils.ilog2(new_stats.n_samples)      # note: 0-based indexing
-        new_base_step_size, new_estimated_std_devs = lax.cond(
-            jnp.logical_and(
-                current_round < self.adapt_rounds,            # are we still adapting?
-                new_stats.n_samples == 2 ** (current_round+1) # are we at the end of a round?
-            ),
-            lambda t: (
-                new_stats.mean_step_size, 
-                jnp.where(
-                    new_stats.vars_flat > 0,
-                    lax.sqrt(new_stats.vars_flat),
-                    t[1] # use the old estimated std dev in case of 0 
-                )
-            ),
-            util.identity,
-            (self.base_step_size, self.estimated_std_devs)
-        )
-        self.base_step_size = new_base_step_size
-        self.estimated_std_devs = new_estimated_std_devs
-        # jax.debug.print(
-        #     "base_step_size={b}, estimated_std_devs={e}", ordered=True,
-        #     b=self.base_step_size, e=self.estimated_std_devs)
-        
+        next_state = self.adapt(next_state)
+
         return next_state
 
     def auto_step_size(self, state, selector_params, diag_precond):
         init_log_joint = state.log_joint # Note: assumes the log joint value is up to date!
         next_state = self.update_log_joint(self.involution_main(
-            self.base_step_size, state, diag_precond))
+            state.base_step_size, state, diag_precond))
         next_log_joint = next_state.log_joint
         state = utils.copy_state_extras(next_state, state) # update state's stats and rng_key
 
@@ -234,7 +213,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             self.shrink_step_size_cond_fun,
             self.shrink_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
-             selector_params, self.base_step_size, diag_precond)
+             selector_params, diag_precond)
         )
         return state, exponent
     
@@ -244,10 +223,36 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             self.grow_step_size_cond_fun,
             self.grow_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
-             selector_params, self.base_step_size, diag_precond)
+             selector_params, diag_precond)
         )
 
         # deduct 1 step to avoid cliffs, but only if we actually entered the loop
         exponent = lax.cond(exponent > 0, lambda e: e-1, util.identity, exponent)
         return state, exponent
+    
+    def adapt(self, state):
+        stats = state.stats
+        round = utils.current_round(stats.n_samples)
+        new_base_step_size, new_estimated_std_devs = lax.cond(
+            jnp.logical_and(
+                round <= self.adapt_rounds,                              # are we still adapting?
+                stats.n_samples == utils.last_sample_idx_in_round(round) # are we at the end of a round?
+            ),
+            lambda t: (
+                stats.mean_step_size, 
+                jnp.where(
+                    stats.vars_flat > 0,
+                    lax.sqrt(stats.vars_flat),
+                    t[1] # use the old estimated std dev in case of 0 (which is inited as all ones)
+                )
+            ),
+            util.identity,
+            (state.base_step_size, state.estimated_std_devs)
+        )
+        state = state._replace(
+            base_step_size=new_base_step_size, estimated_std_devs=new_estimated_std_devs)
+        # jax.debug.print(
+        #     "n_samples={n},round={r},base_step_size={b}, estimated_std_devs={e}", ordered=True,
+        #     n=stats.n_samples,r=round,b=state.base_step_size, e=state.estimated_std_devs)
+        return state
 

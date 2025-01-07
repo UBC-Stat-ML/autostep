@@ -29,14 +29,23 @@ def log2_iceil(x):
     """
     return lax.ceil(jnp.log2(x)).astype(int)
 
+def current_round(sample_idx):
+    return log2_iceil(sample_idx + 2) - 1
+
+def last_sample_idx_in_round(round):
+    return 2**(round + 1) - 2
+
+def num_warmup_to_adapt_rounds(num_warmup):
+    return log2_iceil(num_warmup + 2) - 1
+
 def ilog2(x):
     """
-    Binary logarithm log2(x) for ints.
+    Binary logarithm log2(x) for ints. Note: returns `0` for all `x<=1`.
     """
     return lax.while_loop(
         lambda t: t[1]>1,
         lambda t: (t[0]+1, lax.shift_right_arithmetic(t[1], 1)),
-        (0,x)
+        (jnp.zeros_like(x), x)
     )[0].astype(int)
 
 ###############################################################################
@@ -102,9 +111,9 @@ def gen_alter_step_size_cond_fun(pred_fun):
 
 def gen_alter_step_size_body_fun(kernel, direction):
     def alter_step_size_body_fun(args):
-        state, exponent, _, *extra, base_step_size, diag_precond = args
+        state, exponent, _, *extra, diag_precond = args
         exponent = exponent + direction
-        eps = step_size(base_step_size, exponent)
+        eps = step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(kernel.involution_main(eps, state, diag_precond))
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)
@@ -113,6 +122,6 @@ def gen_alter_step_size_body_fun(kernel, direction):
         #     "Direction: {d}, Step size: {eps}, n_pot_evals: {n}",
         #     ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
 
-        return (state, exponent, next_log_joint, *extra, base_step_size, diag_precond)
+        return (state, exponent, next_log_joint, *extra, diag_precond)
 
     return alter_step_size_body_fun
