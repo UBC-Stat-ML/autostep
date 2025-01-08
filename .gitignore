@@ -4,3 +4,4 @@ __pycache__/
 *.txt
 temp.py
 poetry.lock
+.coverage
