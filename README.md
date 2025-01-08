@@ -1,3 +1,6 @@
+[![Build Status](https://github.com/UBC-Stat-ML/autostep/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/UBC-Stat-ML/autostep/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/UBC-Stat-ML/autostep/branch/main/graph/badge.svg)](https://codecov.io/gh/UBC-Stat-ML/autostep)
+
 # `autostep`
 
 ***A numpyro implementation of autoStep methods***
@@ -55,9 +58,8 @@ mcmc.print_summary()
 
 ## TODO
 
-- Jittered step sizes
 - autoMALA
-- Github CI
+- Jittered step sizes
 
 ## References
 
