@@ -55,7 +55,11 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |
           poetry install --no-interaction --no-root
-          pip install coverage
+
+          # install coverage pkg separately -- we don't want to add it to
+          # the project dependencies
+          source .venv/bin/activate
+          pip install coverage 
       #----------------------------------------------
       # install your root project, if required
       #----------------------------------------------
