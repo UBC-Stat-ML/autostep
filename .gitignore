@@ -5,3 +5,4 @@ __pycache__/
 temp.py
 poetry.lock
 .coverage
+coverage.xml
