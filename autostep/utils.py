@@ -23,30 +23,37 @@ checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 def std_normal_potential(v):
     return lax.dot(v,v)
 
-def log2_iceil(x):
+def ceil_log2(x):
     """
-    Integer ceiling of log2(x).
+    Ceiling of log2(x). Guaranteed to be an integer.
     """
-    return lax.ceil(jnp.log2(x)).astype(int)
+    n_bits = jax.lax.clz(jnp.zeros_like(x))
+    return n_bits - jax.lax.clz(x) - (jax.lax.population_count(x)==1)
 
-def current_round(sample_idx):
-    return log2_iceil(sample_idx + 2) - 1
+###############################################################################
+# Rounds-based sampling arithmetic
+#
+# Running a rounds-based sampler for "n_r" rounds means we take a total of
+#   n_samples = 2 + 4 + 8 + ... + 2^{n_r} = 2^(n_r+1) - 2 = [2^{n_r} - 2] + [2^{n_r}]
+# samples. The decomposition in the RHS shows that this corresponds to
+#   - A warmup phase of n_r-1 rounds, with a total of 2^{n_r} - 2 samples.
+#     We call this quantity "n_warmup".
+#   - A main sampling phase comprised of a final round with 2^{n_r} steps.
+#     We call this quantity "n_keep".
+# We use the name "n_samples" for the sum of "n_warmup" and "n_keep". Finally,
+# we call "sample_idx" the current step within a round, which resets at the end
+# of every round.
+###############################################################################
 
-def last_sample_idx_in_round(round):
-    return 2**(round + 1) - 2
+def split_n_rounds(n_rounds):
+    n_keep = 2 ** n_rounds
+    return (n_keep-2, n_keep)
 
-def num_warmup_to_adapt_rounds(num_warmup):
-    return log2_iceil(num_warmup + 2) - 1
+def current_round(n_samples):
+    return ceil_log2(n_samples + 2) - 1
 
-def ilog2(x):
-    """
-    Binary logarithm log2(x) for ints. Note: returns `0` for all `x<=1`.
-    """
-    return lax.while_loop(
-        lambda t: t[1]>1,
-        lambda t: (t[0]+1, lax.shift_right_arithmetic(t[1], 1)),
-        (jnp.zeros_like(x), x)
-    )[0].astype(int)
+def n_warmup_to_adapt_rounds(n_warmup):
+    return ceil_log2(n_warmup + 2) - 1
 
 ###############################################################################
 # kernel initialization

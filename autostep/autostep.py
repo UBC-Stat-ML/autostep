@@ -38,7 +38,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     # note: this is called by the enclosing numpyro.infer.MCMC object
     def init(self, rng_key, num_warmup, initial_params, model_args, model_kwargs):
         # determine number of adaptation rounds
-        self.adapt_rounds = utils.num_warmup_to_adapt_rounds(num_warmup)
+        self.adapt_rounds = utils.n_warmup_to_adapt_rounds(num_warmup)
 
         # initialize loop helpers
         self.init_alter_step_size_loop_funs()
@@ -234,18 +234,18 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         Round-based adaptation, as described in Biron-Lattes et al. (2024).
 
-        Currently this updates `base_step_size` and `estimated_std_devs`.
-        At the end, it builds a fresh recorder `state.stats`.
+        Currently, this updates `base_step_size` and `estimated_std_devs`.
+        At the end, it empties the `AutoStepAdaptStats` recorder.
 
         :param state: Current state.
-        :return: 
+        :return: Possibly updated state.
         """
         stats = state.stats
         round = utils.current_round(stats.n_samples)
         new_base_step_size, new_estimated_std_devs, new_adapt_stats = lax.cond(
             jnp.logical_and(
-                round <= self.adapt_rounds,                              # are we still adapting?
-                stats.n_samples == utils.last_sample_idx_in_round(round) # are we at the end of a round?
+                round <= self.adapt_rounds,              # are we still adapting?
+                stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
             lambda t: (
                 t[2].mean_step_size, 
@@ -264,9 +264,15 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             base_step_size = new_base_step_size, estimated_std_devs = new_estimated_std_devs,
             stats = new_stats
         )
-        jax.debug.print(
-            "n_samples={n},round={r},sample_idx={s},base_step_size={b}, estimated_std_devs={e}", ordered=True,
-            n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
-            b=state.base_step_size, e=state.estimated_std_devs)
+        # jax.debug.print(
+        #     """
+        #     n_samples={n}, round={r}, sample_idx={s},
+        #     base_step_size={b}, estimated_std_devs={e},
+        #     mean_step_size={ms}, mean_acc_prob={ma},
+        #     means_flat={m}, vars_flat={v}""", ordered=True,
+        #     n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
+        #     b=state.base_step_size, e=state.estimated_std_devs,
+        #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
+        #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
         return state
 

@@ -17,7 +17,9 @@ import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import MCMC
 from autostep.autorwmh import AutoRWMH
+from autostep import utils
 
+# define model
 J = 8
 y = jnp.array([28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0])
 sigma = jnp.array([15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0])
@@ -28,39 +30,34 @@ def eight_schools(J, sigma, y=None):
     with numpyro.plate('J', J):
         theta = numpyro.sample('theta', dist.Normal(mu, tau))
         numpyro.sample('obs', dist.Normal(theta, sigma), obs=y)
-kernel = AutoRWMH(eight_schools, base_step_size=0.4)
-mcmc = MCMC(kernel, num_warmup=0, num_samples=2**18)
+
+# instantiate sampler and run
+n_rounds = 16
+n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/keep
+kernel = AutoRWMH(eight_schools) # default: symmetric selector, (log-)random mix preconditioner
+mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep)
 mcmc.run(random.key(9), J, sigma, y=y)
 mcmc.print_summary()
 ```
 ```
                 mean       std    median      5.0%     95.0%     n_eff     r_hat
-        mu      4.50      3.56      4.62     -0.77     11.03     70.86      1.02
-       tau      4.08      3.50      3.15      0.08      8.61     78.49      1.01
-  theta[0]      6.54      6.36      6.03     -3.03     16.59    145.01      1.00
-  theta[1]      5.12      4.97      5.20     -3.05     13.32    119.42      1.00
-  theta[2]      3.81      5.86      4.25     -6.10     12.66    107.98      1.00
-  theta[3]      5.08      5.39      5.11     -4.17     13.88    195.02      1.01
-  theta[4]      3.53      5.11      4.11     -4.79     11.64     87.79      1.00
-  theta[5]      4.11      5.31      4.53     -4.89     12.29    149.40      1.02
-  theta[6]      6.66      5.14      6.24     -1.34     14.74    145.33      1.01
-  theta[7]      5.36      6.23      5.11     -4.64     14.43    115.63      1.01
-```
-
-### autoStep diagnostics
-
-```python
->>> print(f"Mean step-size: {mcmc.last_state.stats.mean_step_size}")
-Mean step-size: 0.3895134925842285
->>> print(f"Mean acceptance probability: {mcmc.last_state.stats.mean_acc_prob}")
-Mean acceptance probability: 0.4472614824771881
+        mu      4.04      2.85      3.96     -0.98      8.50     59.73      1.04
+       tau      3.37      3.21      2.36      0.07      7.85     38.93      1.05
+  theta[0]      6.08      5.76      4.99     -2.88     14.66     35.34      1.10
+  theta[1]      4.69      4.15      4.28     -1.73     11.11    108.97      1.05
+  theta[2]      3.36      5.06      3.52     -4.60     11.09    132.02      1.01
+  theta[3]      4.01      4.09      3.81     -3.05     10.43    106.56      1.02
+  theta[4]      3.34      4.10      3.48     -3.06      9.98    131.32      1.00
+  theta[5]      3.65      4.08      3.69     -2.85     10.56    151.94      1.02
+  theta[6]      6.03      4.95      5.25     -1.65     14.15     29.04      1.06
+  theta[7]      3.94      4.56      3.88     -2.66     11.59    123.57      1.01
 ```
 
 ## TODO
 
-- Preconditioning
 - Jittered step sizes
 - autoMALA
+- Github CI
 
 ## References
 

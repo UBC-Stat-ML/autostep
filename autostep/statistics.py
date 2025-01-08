@@ -21,13 +21,13 @@ are cleared at the end of each round. Its fields are:
  - **mean_acc_prob** - online mean acceptance probability for the round.
  - **means_flat** - online mean of the flattened sample field.
  - **vars_flat** - online variance estimate of the flattened sample field.
- - **rng_key** - random number generator seed used for generating proposals, etc.
 """
 
 def make_adapt_stats_recorder(sample_field_flat_shape):
     return AutoStepAdaptStats()._replace(
         means_flat = jnp.zeros(sample_field_flat_shape),
-        vars_flat = jnp.zeros(sample_field_flat_shape))
+        vars_flat = jnp.zeros(sample_field_flat_shape)
+    )
 
 def empty_adapt_stats_recorder(adapt_stats):
     return make_adapt_stats_recorder(jnp.shape(adapt_stats.means_flat))
@@ -45,31 +45,16 @@ AutoStepStats = namedtuple(
 A :func:`~collections.namedtuple` consisting of the following fields:
 
  - **n_pot_evals** - total number of potential evaluations (including warmup).
- - **n_samples** - total number of calls to `kernel.sample` (including warmup).
- - **adapt_stats** - An ``AutoStepAdaptStats`` namedtuple which contains adaptation
+ - **n_samples** - total number of calls to ``sample`` so far. At the end of
+   a run, this should be equal to `num_warmup+num_samples`.
+ - **adapt_stats** - an ``AutoStepAdaptStats`` namedtuple which contains adaptation
    information pertaining to the current round.
-- **z** - Python collection representing values (unconstrained samples from
-   the posterior) at latent sites.
- - **potential_energy** - Potential energy computed at the given value of ``z``.
- - **z_grad** - Gradient of potential energy w.r.t. latent sample sites.
- - **accept_prob** - Acceptance probability of the proposal. Note that ``z``
-   does not correspond to the proposal if it is rejected.
- - **mean_accept_prob** - Mean acceptance probability until current iteration
-   during warmup adaptation or sampling (for diagnostics).
- 
-   + **step_size** - Step size to be used by the integrator in the next iteration.
-   + **inverse_mass_matrix** - The inverse mass matrix to be used for the next
-     iteration.
-   + **mass_matrix_sqrt** - The square root of mass matrix to be used for the next
-     iteration. In case of dense mass, this is the Cholesky factorization of the
-     mass matrix.
-
- - **rng_key** - random number generator seed used for generating proposals, etc.
 """
 
 def make_stats_recorder(sample_field_flat_shape):
     return AutoStepStats()._replace(
-        adapt_stats = make_adapt_stats_recorder(sample_field_flat_shape))
+        adapt_stats = make_adapt_stats_recorder(sample_field_flat_shape)
+    )
 
 def increase_n_pot_evals_by_one(stats):
     return stats._replace(n_pot_evals = stats.n_pot_evals + 1)
