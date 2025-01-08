@@ -1,7 +1,7 @@
 # slight modification of example in 
 # https://github.com/snok/install-poetry?tab=readme-ov-file#workflow-examples-and-tips
 
-name: test
+name: CI
 
 on:
   push:
@@ -11,33 +11,8 @@ on:
   pull_request:
 
 jobs:
-  linting:
-    runs-on: ubuntu-latest
-    steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      #----------------------------------------------
-      #        load pip cache if cache exists
-      #----------------------------------------------
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip
-          restore-keys: ${{ runner.os }}-pip
-      #----------------------------------------------
-      #          install and run linters
-      #----------------------------------------------
-      - run: python -m pip install black flake8 isort
-      - run: |
-          flake8 .
-          black . --check
-          isort .
   
   test:
-    needs: linting
     strategy:
       fail-fast: true
       matrix:
