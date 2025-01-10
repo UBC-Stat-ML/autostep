@@ -7,6 +7,7 @@ from jax import numpy as jnp
 
 from numpyro.infer import MCMC
 
+from autostep import autostep
 from autostep import autorwmh
 from autostep import selectors
 from autostep import statistics
@@ -23,7 +24,7 @@ class TestAutoRWMH(unittest.TestCase):
         v_flat = random.normal(v_key, d)
         diag_precond = random.exponential(prec_key, d)
         r = autorwmh.AutoRWMH()
-        s = autorwmh.AutoRWMHState(x, v_flat, 0., rng_key, statistics.AutoStepStats(), 1.0, None)
+        s = autostep.AutoStepState(x, v_flat, 0., rng_key, statistics.AutoStepStats(), 1.0, None)
         step_size = utils.step_size(s.base_step_size, -1)
         s_half = r.involution_main(step_size, s, diag_precond)
         s_one = r.involution_aux(s_half)

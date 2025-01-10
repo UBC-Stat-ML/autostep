@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 
 import jax
 from jax import flatten_util
@@ -12,6 +13,34 @@ from numpyro import util
 from autostep import utils
 from autostep import statistics
 
+AutoStepState = namedtuple(
+    "AutoStepState",
+    [
+        "x",
+        "v_flat",
+        "log_joint",
+        "rng_key",
+        "stats",
+        "base_step_size",
+        "estimated_std_devs"
+    ],
+)
+"""
+A :func:`~collections.namedtuple` defining the state of autoStep kernels.
+It consists of the fields:
+
+ - **x** - the sample field.
+ - **v_flat** - flattened velocity vector.
+ - **log_joint** - joint log density of ``(x,v_flat)``.
+ - **rng_key** - random number generator key.
+ - **stats** - an ``AutoStepStats`` object.
+ - **base_step_size** - the initial step size. Fixed within a round but updated
+   at the end of each adaptation round.
+ - **estimated_std_devs** - the current best guess of the standard deviations of the
+   flattened sample field. Fixed within a round but updated at the end of each 
+   adaptation round.
+"""
+
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     def init_alter_step_size_loop_funs(self):
@@ -23,7 +52,6 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, 1)
     
     @staticmethod
-    @abstractmethod
     def init_state(initial_params, sample_field_flat_shape, rng_key):
         """
         Initialize the state of the sampler.
@@ -33,7 +61,22 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         :param rng_key: The PRNG key that the sampler should use for simulation.
         :return: The initial state of the sampler.
         """
-        raise NotImplementedError
+        sample_field_flat_shape = jnp.shape(flatten_util.ravel_pytree(initial_params)[0])
+        return AutoStepState(
+            initial_params,
+            jnp.zeros(sample_field_flat_shape),
+            0., # Note: not the actual log joint value; needs to be updated 
+            rng_key,
+            statistics.make_stats_recorder(sample_field_flat_shape),
+            1.0,
+            jnp.ones(sample_field_flat_shape)
+        )
+    
+    def init_extras(self, state):
+        """
+        Carry out additional initializations not required by all autoStep kernels.
+        """
+        return
 
     # note: this is called by the enclosing numpyro.infer.MCMC object
     def init(self, rng_key, num_warmup, initial_params, model_args, model_kwargs):
@@ -53,7 +96,14 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # initialize the state of the autostep sampler
         initial_state = self.init_state(initial_params, rng_key)
 
+        # carry out any other initialization required by an autoStep kernel
+        self.init_extras(initial_state)
+
         return jax.device_put(initial_state)
+
+    @property
+    def sample_field(self):
+        return "x"
 
     @property
     def model(self):
@@ -73,8 +123,6 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     def update_log_joint(self, state):
         """
         Compute the log joint density for all variables, i.e., including auxiliary.
-        This should also update the gradient of the log joint density whenever the
-        these are part of the state of the underlying involutive sampler.
 
         :param state: Current state.
         :return: Updated state.
