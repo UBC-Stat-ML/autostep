@@ -52,12 +52,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, 1)
     
     @staticmethod
-    def init_state(initial_params, sample_field_flat_shape, rng_key):
+    def init_state(initial_params, rng_key):
         """
         Initialize the state of the sampler.
 
         :param initial_params: Initial values for the latent parameters.
-        :param sample_field_flat_shape: Shape of the flattened latent variables 
         :param rng_key: The PRNG key that the sampler should use for simulation.
         :return: The initial state of the sampler.
         """
