@@ -21,7 +21,7 @@ def proto_checkified_is_zero(x):
 checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 
 def std_normal_potential(v):
-    return lax.dot(v,v)
+    return (v*v).sum()/2
 
 def ceil_log2(x):
     """

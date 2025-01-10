@@ -19,7 +19,7 @@ import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import MCMC
-from autostep.autorwmh import AutoRWMH
+from autostep.autohmc import AutoMALA
 from autostep import utils
 
 # define model
@@ -37,28 +37,27 @@ def eight_schools(J, sigma, y=None):
 # instantiate sampler and run
 n_rounds = 16
 n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/keep
-kernel = AutoRWMH(eight_schools) # default: symmetric selector, (log-)random mix preconditioner
+kernel = AutoMALA(eight_schools) # default: symmetric selector, (log-)random mix preconditioner
 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep)
 mcmc.run(random.key(9), J, sigma, y=y)
 mcmc.print_summary()
 ```
 ```
                 mean       std    median      5.0%     95.0%     n_eff     r_hat
-        mu      4.04      2.85      3.96     -0.98      8.50     59.73      1.04
-       tau      3.37      3.21      2.36      0.07      7.85     38.93      1.05
-  theta[0]      6.08      5.76      4.99     -2.88     14.66     35.34      1.10
-  theta[1]      4.69      4.15      4.28     -1.73     11.11    108.97      1.05
-  theta[2]      3.36      5.06      3.52     -4.60     11.09    132.02      1.01
-  theta[3]      4.01      4.09      3.81     -3.05     10.43    106.56      1.02
-  theta[4]      3.34      4.10      3.48     -3.06      9.98    131.32      1.00
-  theta[5]      3.65      4.08      3.69     -2.85     10.56    151.94      1.02
-  theta[6]      6.03      4.95      5.25     -1.65     14.15     29.04      1.06
-  theta[7]      3.94      4.56      3.88     -2.66     11.59    123.57      1.01
+        mu      6.55      3.00      6.61      2.08     12.07     13.91      1.12
+       tau      2.95      2.51      2.31      0.04      6.30     37.44      1.03
+  theta[0]      7.56      4.39      7.44     -0.89     14.19     14.30      1.20
+  theta[1]      7.28      3.96      7.12      0.34     13.56     33.12      1.12
+  theta[2]      6.71      3.93      6.47      0.07     13.04     45.15      1.03
+  theta[3]      5.83      4.72      6.52     -1.56     12.87     20.07      1.14
+  theta[4]      6.16      4.03      6.46     -0.71     12.64     30.49      1.05
+  theta[5]      7.23      4.42      6.93     -1.63     13.64     25.33      1.06
+  theta[6]      7.63      3.65      7.45      1.46     13.59     23.19      1.13
+  theta[7]      7.28      3.86      7.23      0.60     12.96     34.00      1.09
 ```
 
 ## TODO
 
-- autoMALA
 - Jittered step sizes
 
 ## References

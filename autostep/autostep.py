@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 
 import jax
 from jax import flatten_util
@@ -12,6 +13,34 @@ from numpyro import util
 from autostep import utils
 from autostep import statistics
 
+AutoStepState = namedtuple(
+    "AutoStepState",
+    [
+        "x",
+        "v_flat",
+        "log_joint",
+        "rng_key",
+        "stats",
+        "base_step_size",
+        "estimated_std_devs"
+    ],
+)
+"""
+A :func:`~collections.namedtuple` defining the state of autoStep kernels.
+It consists of the fields:
+
+ - **x** - the sample field.
+ - **v_flat** - flattened velocity vector.
+ - **log_joint** - joint log density of ``(x,v_flat)``.
+ - **rng_key** - random number generator key.
+ - **stats** - an ``AutoStepStats`` object.
+ - **base_step_size** - the initial step size. Fixed within a round but updated
+   at the end of each adaptation round.
+ - **estimated_std_devs** - the current best guess of the standard deviations of the
+   flattened sample field. Fixed within a round but updated at the end of each 
+   adaptation round.
+"""
+
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     def init_alter_step_size_loop_funs(self):
@@ -23,17 +52,30 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, 1)
     
     @staticmethod
-    @abstractmethod
-    def init_state(initial_params, sample_field_flat_shape, rng_key):
+    def init_state(initial_params, rng_key):
         """
         Initialize the state of the sampler.
 
         :param initial_params: Initial values for the latent parameters.
-        :param sample_field_flat_shape: Shape of the flattened latent variables 
         :param rng_key: The PRNG key that the sampler should use for simulation.
         :return: The initial state of the sampler.
         """
-        raise NotImplementedError
+        sample_field_flat_shape = jnp.shape(flatten_util.ravel_pytree(initial_params)[0])
+        return AutoStepState(
+            initial_params,
+            jnp.zeros(sample_field_flat_shape),
+            0., # Note: not the actual log joint value; needs to be updated 
+            rng_key,
+            statistics.make_stats_recorder(sample_field_flat_shape),
+            1.0,
+            jnp.ones(sample_field_flat_shape)
+        )
+    
+    def init_extras(self, state):
+        """
+        Carry out additional initializations not required by all autoStep kernels.
+        """
+        return state
 
     # note: this is called by the enclosing numpyro.infer.MCMC object
     def init(self, rng_key, num_warmup, initial_params, model_args, model_kwargs):
@@ -53,7 +95,14 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # initialize the state of the autostep sampler
         initial_state = self.init_state(initial_params, rng_key)
 
+        # carry out any other initialization required by an autoStep kernel
+        initial_state = self.init_extras(initial_state)
+
         return jax.device_put(initial_state)
+
+    @property
+    def sample_field(self):
+        return "x"
 
     @property
     def model(self):
@@ -73,8 +122,6 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     def update_log_joint(self, state):
         """
         Compute the log joint density for all variables, i.e., including auxiliary.
-        This should also update the gradient of the log joint density whenever the
-        these are part of the state of the underlying involutive sampler.
 
         :param state: Current state.
         :return: Updated state.
@@ -92,9 +139,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         raise NotImplementedError
         
-    @staticmethod
+    # @staticmethod
     @abstractmethod
-    def involution_main(step_size, state, diag_precond):
+    def involution_main(self, step_size, state, diag_precond):
         """
         Apply the main part of the involution. This is usually the part that 
         modifies the variables of interests.
@@ -106,16 +153,17 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         raise NotImplementedError
     
-    @staticmethod
     @abstractmethod
-    def involution_aux(state):
+    def involution_aux(self, step_size, state, diag_precond):
         """
         Apply the auxiliary part of the involution. This is usually the part that
         is not necessary to implement for the respective involutive MCMC algorithm
         to work correctly (e.g., momentum flip in HMC).
         Note: it is assumed that the augmented target is invariant to this transformation.
 
+        :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
+        :param diag_precond: A vector representing a diagonal preconditioning matrix.
         :return: Updated state.
         """
         raise NotImplementedError
@@ -136,19 +184,22 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         selector_params = self.selector.draw_parameters(selector_key)
 
         # forward step size search
-        # jax.debug.print("fwd autostep: init_log_joint={i}", ordered=True, i=state.log_joint)
+        # jax.debug.print("fwd autostep: init_log_joint={i}, init_x={x}, init_v={v}", ordered=True, i=state.log_joint, x=state.x, v=state.v_flat)
         state, fwd_exponent = self.auto_step_size(
             state, selector_params, diag_precond)
         fwd_step_size = utils.step_size(state.base_step_size, fwd_exponent)
         proposed_state = self.update_log_joint(self.involution_main(
             fwd_step_size, state, diag_precond))
         # jax.debug.print(
-        #     "fwd done: step_size={s}, init_log_joint={l}, next_log_joint={ln}, log_joint_diff={ld}",
+        #     "fwd done: step_size={s}, init_log_joint={l}, next_log_joint={ln}, log_joint_diff={ld}, prop_x={x}, prop_v={v}",
         #     ordered=True, s=fwd_step_size, l=state.log_joint, ln=proposed_state.log_joint, 
-        #     ld=proposed_state.log_joint-state.log_joint)
+        #     ld=proposed_state.log_joint-state.log_joint, x=proposed_state.x, v=proposed_state.v_flat)
 
         # backward step size search
-        prop_state_flip = self.involution_aux(proposed_state) # don't recompute log_joint because we assume inv_aux leaves it invariant
+        # don't recompute log_joint for flipped state because we assume inv_aux 
+        # leaves it invariant
+        prop_state_flip = self.involution_aux(
+            fwd_step_size, proposed_state, diag_precond)
         # jax.debug.print("bwd begin", ordered=True)
         prop_state_flip, bwd_exponent = self.auto_step_size(
             prop_state_flip, selector_params, diag_precond)
@@ -209,7 +260,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     
     def shrink_step_size(self, state, selector_params, next_log_joint, init_log_joint, diag_precond):
         exponent = 0
-        (state, exponent, *extra,) = lax.while_loop(
+        state, exponent, *_ = lax.while_loop(
             self.shrink_step_size_cond_fun,
             self.shrink_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
@@ -219,7 +270,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     
     def grow_step_size(self, state, selector_params, next_log_joint, init_log_joint, diag_precond):
         exponent = 0        
-        (state, exponent, *extra,) = lax.while_loop(
+        state, exponent, *_ = lax.while_loop(
             self.grow_step_size_cond_fun,
             self.grow_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
