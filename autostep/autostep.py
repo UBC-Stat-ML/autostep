@@ -98,7 +98,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # carry out any other initialization required by an autoStep kernel
         initial_state = self.init_extras(initial_state)
 
-        return jax.device_put(initial_state)
+        return initial_state
 
     @property
     def sample_field(self):
