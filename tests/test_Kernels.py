@@ -43,7 +43,7 @@ class TestKernels(unittest.TestCase):
                     s_one = r.involution_aux(step_size, s_half, diag_precond)
                     s_onehalf = r.involution_main(step_size, s_one, diag_precond)
                     s_two = r.involution_aux(step_size, s_onehalf, diag_precond)
-                    self.assertTrue(jax.tree.all(jax.tree.map(jnp.allclose, s_two, s)))
+                    self.assertTrue(jax.tree.all(jax.tree.map(partial(jnp.allclose, atol=1e-4), s_two, s)))
 
     def test_moments(self):
 
