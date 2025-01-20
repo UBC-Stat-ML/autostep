@@ -1,6 +1,8 @@
 from tests import utils as testutils
 
+from functools import partial
 import unittest
+
 import jax
 from jax import random
 from jax import numpy as jnp
@@ -17,12 +19,16 @@ from autostep import utils
 
 class TestKernels(unittest.TestCase):
 
-    TESTED_KERNELS = (autorwmh.AutoRWMH, autohmc.AutoHMC)
+    TESTED_KERNELS = (
+        autorwmh.AutoRWMH,
+        autohmc.AutoMALA,
+        partial(autohmc.AutoHMC, n_leapgrog_steps=10)
+    )
     
     def test_involution(self):
         d = 4
         rng_key = random.key(321)
-        for i in range(1):
+        for i in range(10):
             for kernel_class in self.TESTED_KERNELS:
                 with self.subTest(kernel_class=kernel_class, i=i):
                     rng_key, x_key, v_key, prec_key, step_key = random.split(rng_key, 5) 
@@ -31,7 +37,7 @@ class TestKernels(unittest.TestCase):
                     s = s._replace(
                         v_flat = random.normal(v_key, d),
                         base_step_size = random.exponential(step_key))
-                    diag_precond = random.exponential(prec_key, d)
+                    diag_precond = 0.1 * random.exponential(prec_key, d)
                     step_size = utils.step_size(s.base_step_size, -1)
                     s_half = r.involution_main(step_size, s, diag_precond)
                     s_one = r.involution_aux(step_size, s_half, diag_precond)
