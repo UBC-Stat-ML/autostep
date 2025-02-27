@@ -281,7 +281,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         exponent = lax.cond(exponent > 0, lambda e: e-1, util.identity, exponent)
         return state, exponent
     
-    def adapt(self, state):
+    def adapt(self, state, force=False):
         """
         Round-based adaptation, as described in Biron-Lattes et al. (2024).
 
@@ -289,12 +289,13 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         At the end, it empties the `AutoStepAdaptStats` recorder.
 
         :param state: Current state.
+        :param force: Should adaptation be forced regardless of round status?
         :return: Possibly updated state.
         """
         stats = state.stats
         round = utils.current_round(stats.n_samples)
         new_base_step_size, new_estimated_std_devs, new_adapt_stats = lax.cond(
-            jnp.logical_and(
+            force or jnp.logical_and(
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
