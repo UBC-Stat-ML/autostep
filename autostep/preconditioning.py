@@ -36,8 +36,11 @@ class MixDiagonalPreconditioner(Preconditioner):
     @staticmethod
     def build_precond(sqrt_var, rng_key):
         assert len(jnp.shape(sqrt_var)) == 1
-        
+
         # uniform mixture in log space
         # p = exp(U*log(hat_sd) + (1-U)log(1)) = exp(log(hat_sd^U))) = hat_sd^U
         return sqrt_var ** random.uniform(rng_key)
 
+# TODO: change when we have one
+def is_dense(preconditioner):
+    return False

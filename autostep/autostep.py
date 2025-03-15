@@ -51,8 +51,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             self.selector.should_grow)
         self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, 1)
     
-    @staticmethod
-    def init_state(initial_params, rng_key):
+    def init_state(self, initial_params, rng_key):
         """
         Initialize the state of the sampler.
 
@@ -66,7 +65,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             jnp.zeros(sample_field_flat_shape),
             0., # Note: not the actual log joint value; needs to be updated 
             rng_key,
-            statistics.make_stats_recorder(sample_field_flat_shape),
+            statistics.make_stats_recorder(
+                sample_field_flat_shape, self.preconditioner
+            ),
             1.0,
             jnp.ones(sample_field_flat_shape)
         )
