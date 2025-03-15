@@ -58,12 +58,12 @@ def gen_integrator(potential_fn, initial_state):
         )[0]
 
     # full position and velocity updates
-    def integrator_loop_body(i, args):
-        x_flat, v_flat, step_size, diag_precond = args
+    def integrator_scan_body_fn(carry, _):
+        x_flat, v_flat, step_size, diag_precond = carry
         x_flat = x_flat + step_size * (diag_precond * v_flat)
         grad_flat = grad_flat_x_flat(x_flat)
         v_flat = v_flat - step_size * (diag_precond * grad_flat)
-        return (x_flat, v_flat, step_size, diag_precond)
+        return (x_flat, v_flat, step_size, diag_precond), None
     
     # leapfrog integrator using Neal (2011, Fig. 2) trick to use only (n_steps+1) grad evals
     # IMPORTANT: `diag_precond` is on the scale of Sigma^{1/2}, where Sigma=Cov(x)
@@ -81,14 +81,13 @@ def gen_integrator(potential_fn, initial_state):
         # loop full position and velocity leapfrog steps
         # note: slight modification from Neal's to avoid the "if" inside the loop
         # In particular, MALA (n_steps=1) doesn't enter the loop
-        x_flat, v_flat, *_ = lax.fori_loop(
-            0,
-            n_steps-1, 
-            integrator_loop_body,
-            (x_flat, v_flat, step_size, diag_precond)
-        )
+        x_flat, v_flat, *_ = lax.scan(
+            integrator_scan_body_fn,
+            (x_flat, v_flat, step_size, diag_precond),
+            None,
+            n_steps-1
+        )[0]
         # jax.debug.print("post loop: x_flat={xf}, v_flat={v}", ordered=True, xf=x_flat, v=v_flat)
-
 
         # final full position step plus half velocity step
         x_flat = x_flat + step_size * (diag_precond * v_flat)
