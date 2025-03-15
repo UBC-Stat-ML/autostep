@@ -66,7 +66,7 @@ def gen_integrator(potential_fn, initial_state):
         return (x_flat, v_flat, step_size, diag_precond)
     
     # leapfrog integrator using Neal (2011, Fig. 2) trick to use only (n_steps+1) grad evals
-    # IMPORTANT: `diag_precond` is on the scale of Sigma^{1/2}, where Sigma=Var(x)
+    # IMPORTANT: `diag_precond` is on the scale of Sigma^{1/2}, where Sigma=Cov(x)
     def integrator(step_size, state, diag_precond, n_steps):
         # jax.debug.print("start: step_size={s}, diag_precond={d}", ordered=True, s=step_size, d=diag_precond)
 
