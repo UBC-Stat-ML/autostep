@@ -141,20 +141,20 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         
     # @staticmethod
     @abstractmethod
-    def involution_main(self, step_size, state, diag_precond):
+    def involution_main(self, step_size, state, precond_array):
         """
         Apply the main part of the involution. This is usually the part that 
         modifies the variables of interests.
 
         :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
-        :param diag_precond: A vector representing a diagonal preconditioning matrix.
+        :param precond_array: A preconditioning array.
         :return: Updated state.
         """
         raise NotImplementedError
     
     @abstractmethod
-    def involution_aux(self, step_size, state, diag_precond):
+    def involution_aux(self, step_size, state, precond_array):
         """
         Apply the auxiliary part of the involution. This is usually the part that
         is not necessary to implement for the respective involutive MCMC algorithm
@@ -163,7 +163,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
-        :param diag_precond: A vector representing a diagonal preconditioning matrix.
+        :param precond_array: A preconditioning array.
         :return: Updated state.
         """
         raise NotImplementedError
@@ -174,11 +174,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         state = self.update_log_joint(self.refresh_aux_vars(state))
         utils.checkified_is_finite(state.log_joint)
 
-        # build a (possibly randomized) diagonal preconditioner
+        # build a (possibly randomized) preconditioner
         rng_key, precond_key, selector_key = random.split(state.rng_key, 3)
         state = state._replace(rng_key = rng_key) # always update the state with the modified key!
-        diag_precond = self.preconditioner.build_diag_precond(
-            state.estimated_std_devs, precond_key)
+        precond_array = self.preconditioner.build_precond(
+            state.estimated_std_devs, precond_key
+        )
 
         # draw selector parameters
         selector_params = self.selector.draw_parameters(selector_key)
@@ -186,10 +187,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # forward step size search
         # jax.debug.print("fwd autostep: init_log_joint={i}, init_x={x}, init_v={v}", ordered=True, i=state.log_joint, x=state.x, v=state.v_flat)
         state, fwd_exponent = self.auto_step_size(
-            state, selector_params, diag_precond)
+            state, selector_params, precond_array
+        )
         fwd_step_size = utils.step_size(state.base_step_size, fwd_exponent)
-        proposed_state = self.update_log_joint(self.involution_main(
-            fwd_step_size, state, diag_precond))
+        proposed_state = self.update_log_joint(
+            self.involution_main(fwd_step_size, state, precond_array)
+        )
         # jax.debug.print(
         #     "fwd done: step_size={s}, init_log_joint={l}, next_log_joint={ln}, log_joint_diff={ld}, prop_x={x}, prop_v={v}",
         #     ordered=True, s=fwd_step_size, l=state.log_joint, ln=proposed_state.log_joint, 
@@ -199,10 +202,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # don't recompute log_joint for flipped state because we assume inv_aux 
         # leaves it invariant
         prop_state_flip = self.involution_aux(
-            fwd_step_size, proposed_state, diag_precond)
+            fwd_step_size, proposed_state, precond_array
+        )
         # jax.debug.print("bwd begin", ordered=True)
         prop_state_flip, bwd_exponent = self.auto_step_size(
-            prop_state_flip, selector_params, diag_precond)
+            prop_state_flip, selector_params, precond_array
+        )
         reversibility_passed = fwd_exponent == bwd_exponent
 
         # Metropolis-Hastings step
@@ -235,10 +240,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         return next_state
 
-    def auto_step_size(self, state, selector_params, diag_precond):
+    def auto_step_size(self, state, selector_params, precond_array):
         init_log_joint = state.log_joint # Note: assumes the log joint value is up to date!
-        next_state = self.update_log_joint(self.involution_main(
-            state.base_step_size, state, diag_precond))
+        next_state = self.update_log_joint(
+            self.involution_main(state.base_step_size, state, precond_array)
+        )
         next_log_joint = next_state.log_joint
         state = utils.copy_state_extras(next_state, state) # update state's stats and rng_key
 
@@ -247,34 +253,43 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # initial state except for extra fields -- stats, rng_key -- which we
         # want to update
         state, shrink_exponent = self.shrink_step_size(
-            state, selector_params, next_log_joint, init_log_joint, diag_precond)
+            state, selector_params, next_log_joint, init_log_joint, precond_array
+        )
 
         # try growing (no-op if selector decides not to grow)
         state, grow_exponent = self.grow_step_size(
-            state, selector_params, next_log_joint, init_log_joint, diag_precond)
+            state, selector_params, next_log_joint, init_log_joint, precond_array
+        )
 
         # check only one route was taken
         utils.checkified_is_zero(shrink_exponent * grow_exponent)
 
         return state, shrink_exponent + grow_exponent
     
-    def shrink_step_size(self, state, selector_params, next_log_joint, init_log_joint, diag_precond):
+    def shrink_step_size(
+            self, 
+            state, 
+            selector_params, 
+            next_log_joint, 
+            init_log_joint, 
+            precond_array
+        ):
         exponent = 0
         state, exponent, *_ = lax.while_loop(
             self.shrink_step_size_cond_fun,
             self.shrink_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
-             selector_params, diag_precond)
+             selector_params, precond_array)
         )
         return state, exponent
     
-    def grow_step_size(self, state, selector_params, next_log_joint, init_log_joint, diag_precond):
+    def grow_step_size(self, state, selector_params, next_log_joint, init_log_joint, precond_array):
         exponent = 0        
         state, exponent, *_ = lax.while_loop(
             self.grow_step_size_cond_fun,
             self.grow_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
-             selector_params, diag_precond)
+             selector_params, precond_array)
         )
 
         # deduct 1 step to avoid cliffs, but only if we actually entered the loop

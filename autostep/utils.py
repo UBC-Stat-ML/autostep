@@ -30,6 +30,13 @@ def ceil_log2(x):
     n_bits = jax.lax.clz(jnp.zeros_like(x))
     return n_bits - jax.lax.clz(x) - (jax.lax.population_count(x)==1)
 
+def apply_precond(precond_array, vec):
+    return (
+        precond_array * vec 
+        if len(jnp.shape(precond_array)) == 1 
+        else precond_array @ vec
+    )
+
 ###############################################################################
 # Rounds-based sampling arithmetic
 #
@@ -118,10 +125,12 @@ def gen_alter_step_size_cond_fun(pred_fun):
 
 def gen_alter_step_size_body_fun(kernel, direction):
     def alter_step_size_body_fun(args):
-        state, exponent, _, *extra, diag_precond = args
+        state, exponent, _, *extra, precond_array = args
         exponent = exponent + direction
         eps = step_size(state.base_step_size, exponent)
-        next_state = kernel.update_log_joint(kernel.involution_main(eps, state, diag_precond))
+        next_state = kernel.update_log_joint(
+            kernel.involution_main(eps, state, precond_array)
+        )
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)
 
@@ -129,6 +138,6 @@ def gen_alter_step_size_body_fun(kernel, direction):
         #     "Direction: {d}, Step size: {eps}, n_pot_evals: {n}",
         #     ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
 
-        return (state, exponent, next_log_joint, *extra, diag_precond)
+        return (state, exponent, next_log_joint, *extra, precond_array)
 
     return alter_step_size_body_fun
