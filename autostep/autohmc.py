@@ -60,12 +60,13 @@ def gen_integrator(potential_fn, initial_state):
     # full position and velocity updates
     def integrator_loop_body(i, args):
         x_flat, v_flat, step_size, diag_precond = args
-        x_flat = x_flat + step_size * v_flat
+        x_flat = x_flat + step_size * (diag_precond * v_flat)
         grad_flat = grad_flat_x_flat(x_flat)
-        v_flat = v_flat - step_size * (diag_precond*grad_flat)
+        v_flat = v_flat - step_size * (diag_precond * grad_flat)
         return (x_flat, v_flat, step_size, diag_precond)
     
     # leapfrog integrator using Neal (2011, Fig. 2) trick to use only (n_steps+1) grad evals
+    # IMPORTANT: `diag_precond` is on the scale of Sigma^{1/2}, where Sigma=Var(x)
     def integrator(step_size, state, diag_precond, n_steps):
         # jax.debug.print("start: step_size={s}, diag_precond={d}", ordered=True, s=step_size, d=diag_precond)
 
@@ -74,7 +75,7 @@ def gen_integrator(potential_fn, initial_state):
         x_flat = flatten_util.ravel_pytree(x)[0]
         grad_flat = grad_flat_x_flat(x_flat)
         # jax.debug.print("pre 1st momentum half-step: x={x}, x_flat={xf}, grad={g}, v_flat={v}", ordered=True, x=x, xf=x_flat, g=grad_flat, v=v_flat)
-        v_flat = v_flat - (step_size/2) * (diag_precond*grad_flat)
+        v_flat = v_flat - (step_size/2) * (diag_precond * grad_flat)
         # jax.debug.print("post: v_flat={v}", ordered=True, v=v_flat)
 
         # loop full position and velocity leapfrog steps
@@ -90,9 +91,9 @@ def gen_integrator(potential_fn, initial_state):
 
 
         # final full position step plus half velocity step
-        x_flat = x_flat + step_size * v_flat
+        x_flat = x_flat + step_size * (diag_precond * v_flat)
         grad_flat = grad_flat_x_flat(x_flat)
-        v_flat = v_flat - (step_size/2) * (diag_precond*grad_flat)
+        v_flat = v_flat - (step_size/2) * (diag_precond * grad_flat)
         
         # unravel, update state, and return it
         x_new = unravel_fn(x_flat)
