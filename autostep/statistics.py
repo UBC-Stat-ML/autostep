@@ -94,9 +94,23 @@ def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
     new_mean_step_size = mean_step_size + (avg_fwd_bwd_step_size-mean_step_size)/sample_idx
     new_mean_acc_prob = mean_acc_prob + (acc_prob-mean_acc_prob)/sample_idx
     new_means_flat = means_flat + (x_flat - means_flat)/sample_idx
-    new_vars_flat = ((sample_idx-1)*vars_flat + (x_flat - means_flat) * (x_flat - new_means_flat)) / sample_idx
+    dvars = delta_vars(vars_flat, x_flat - means_flat, x_flat - new_means_flat)
+    new_vars_flat = ((sample_idx-1)*vars_flat + dvars) / sample_idx
     return AutoStepStats(
-        n_pot_evals, n_samples, AutoStepAdaptStats(
-            sample_idx, new_mean_step_size, new_mean_acc_prob, new_means_flat,
-            new_vars_flat)
+        n_pot_evals, 
+        n_samples, 
+        AutoStepAdaptStats(
+            sample_idx, 
+            new_mean_step_size, 
+            new_mean_acc_prob, 
+            new_means_flat,
+            new_vars_flat
         )
+    )
+
+def delta_vars(vars_flat, dx1, dx2):
+    if len(jnp.shape(vars_flat))==1:
+        return dx1 * dx2
+    else:
+        return jnp.outer(dx1, dx2)
+
