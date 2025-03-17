@@ -90,7 +90,7 @@ def init_model(model, rng_key, model_args, model_kwargs):
 
 def init_sqrt_var(sample_field_flat_shape, preconditioner):
     if is_dense(preconditioner):
-        return jnp.eye(sample_field_flat_shape, sample_field_flat_shape)
+        return jnp.eye(*(2*sample_field_flat_shape))
     else: 
         return jnp.ones(sample_field_flat_shape)
 

@@ -346,9 +346,12 @@ def update_sampler_params(preconditioner, args):
     if preconditioning.is_dense(preconditioner):
         # add exponentially decaying regularization to prevent numerical issues
         # this avoids having to check eigenvalues which would be too costly
-        n = adapt_stats.sample_idx
+        eps = lax.max(
+            jax.numpy.finfo(sqrt_var.dtype).eps, 
+            jnp.exp(-adapt_stats.sample_idx)
+        )
         new_sqrt_var = lax.linalg.cholesky(
-            adapt_stats.vars_flat + jnp.eye(*sqrt_var.shape) * jnp.exp(-n)
+            adapt_stats.vars_flat + eps*jnp.eye(*sqrt_var.shape)
         )
     else:
         new_sqrt_var = jnp.where(

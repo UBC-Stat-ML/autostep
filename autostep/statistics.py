@@ -32,7 +32,7 @@ def make_adapt_stats_recorder(
     ):
     if vars_flat_shape is None:
         vars_flat_shape = (
-            (sample_field_flat_shape,sample_field_flat_shape)
+            2*sample_field_flat_shape
             if is_dense(preconditioner) 
             else sample_field_flat_shape
         )

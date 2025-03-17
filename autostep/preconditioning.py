@@ -1,7 +1,11 @@
 from abc import ABC, abstractmethod
 
+import jax
+from jax import lax
 from jax import numpy as jnp
 from jax import random
+
+from numpyro import util
 
 class Preconditioner(ABC):
 
@@ -23,9 +27,9 @@ class IdentityDiagonalPreconditioner(Preconditioner):
 
     @staticmethod
     def build_precond(sqrt_var, rng_key):
-        return jnp.ones_like(sqrt_var, (sqrt_var.shape[0],))
+        return jnp.ones_like(sqrt_var)
 
-class FixedPreconditioner(Preconditioner):
+class FixedDiagonalPreconditioner(Preconditioner):
 
     @staticmethod
     def build_precond(sqrt_var, rng_key):
@@ -41,6 +45,32 @@ class MixDiagonalPreconditioner(Preconditioner):
         # p = exp(U*log(hat_sd) + (1-U)log(1)) = exp(log(hat_sd^U))) = hat_sd^U
         return sqrt_var ** random.uniform(rng_key)
 
-# TODO: change when we have one
+#######################################
+# Dense
+#######################################
+
+class FixedDensePreconditioner(Preconditioner):
+
+    @staticmethod
+    def build_precond(sqrt_var, rng_key):
+        return sqrt_var
+
+class MixDensePreconditioner(Preconditioner):
+
+    @staticmethod
+    def build_precond(sqrt_var, rng_key):
+        assert len(jnp.shape(sqrt_var)) == 2
+
+        # with equal prob choose the estimate or the identity
+        return lax.cond(
+            random.bernoulli(rng_key),
+            util.identity,
+            lambda M: jnp.eye(*M.shape),
+            sqrt_var
+        )
+
 def is_dense(preconditioner):
-    return False
+    return (
+        isinstance(preconditioner, FixedDensePreconditioner) or
+        isinstance(preconditioner, MixDensePreconditioner)
+    )
