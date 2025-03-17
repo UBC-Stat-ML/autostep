@@ -57,7 +57,6 @@ mcmc.print_summary()
 
 ## TODO
 
-- Dense preconditioning
 - autoHMC with randomized number of steps (RHMC)
 
 ## References
