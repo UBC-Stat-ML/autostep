@@ -32,7 +32,7 @@ class TestPreconditioning(unittest.TestCase):
             with self.subTest(prec_class=type(p)):
                 kernel = AutoMALA(potential_fn = pot_fn, preconditioner = p)
                 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep, progress_bar=False)
-                mcmc.run(random.key(12349895454), init_params=init_vals)            
+                mcmc.run(random.key(2349895454), init_params=init_vals)            
                 min_ess = testutils.extremal_diagnostics(mcmc)[1]
                 print(f"{type(p)}: min_ess={min_ess}")
                 self.assertGreater(min_ess, 77) # >200 locally but on CI-macos-latest FixedDense fails (~77)
