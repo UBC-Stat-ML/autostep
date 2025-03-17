@@ -4,6 +4,8 @@ from jax import numpy as jnp
 from jax.experimental import checkify
 from numpyro import infer
 
+from autostep.preconditioning import is_dense
+
 ###############################################################################
 # basic utilities
 ###############################################################################
@@ -85,6 +87,12 @@ def init_model(model, rng_key, model_args, model_kwargs):
     model_kwargs = {} if model_kwargs is None else model_kwargs
     potential_fn = potential_fn_gen(*model_args, **model_kwargs)
     return init_params, potential_fn, postprocess_fn
+
+def init_sqrt_var(sample_field_flat_shape, preconditioner):
+    if is_dense(preconditioner):
+        return jnp.eye(sample_field_flat_shape, sample_field_flat_shape)
+    else: 
+        return jnp.ones(sample_field_flat_shape)
 
 ###############################################################################
 # functions used withing lax.cond to create the output state for `sample`

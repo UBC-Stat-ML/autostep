@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
+from functools import partial
 
 import jax
 from jax import flatten_util
@@ -12,6 +13,7 @@ from numpyro import util
 
 from autostep import utils
 from autostep import statistics
+from autostep import preconditioning
 
 AutoStepState = namedtuple(
     "AutoStepState",
@@ -22,7 +24,7 @@ AutoStepState = namedtuple(
         "rng_key",
         "stats",
         "base_step_size",
-        "estimated_std_devs"
+        "sqrt_var"
     ],
 )
 """
@@ -36,9 +38,10 @@ It consists of the fields:
  - **stats** - an ``AutoStepStats`` object.
  - **base_step_size** - the initial step size. Fixed within a round but updated
    at the end of each adaptation round.
- - **estimated_std_devs** - the current best guess of the standard deviations of the
-   flattened sample field. Fixed within a round but updated at the end of each 
-   adaptation round.
+ - **sqrt_var** - the current best guess of the square-root of the (co)variance
+   of the flattened sample field. It can be either a vector (diagonal 
+   preconditioning) or a matrix (dense preconditioner). Fixed within a round 
+   but updated at the end of each adaptation round.
 """
 
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
@@ -69,7 +72,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 sample_field_flat_shape, self.preconditioner
             ),
             1.0,
-            jnp.ones(sample_field_flat_shape)
+            utils.init_sqrt_var(sample_field_flat_shape, self.preconditioner)
         )
     
     def init_extras(self, state):
@@ -179,7 +182,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         rng_key, precond_key, selector_key = random.split(state.rng_key, 3)
         state = state._replace(rng_key = rng_key) # always update the state with the modified key!
         precond_array = self.preconditioner.build_precond(
-            state.estimated_std_devs, precond_key
+            state.sqrt_var, precond_key
         )
 
         # draw selector parameters
@@ -301,7 +304,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         Round-based adaptation, as described in Biron-Lattes et al. (2024).
 
-        Currently, this updates `base_step_size` and `estimated_std_devs`.
+        Currently, this updates `base_step_size` and `sqrt_var`.
         At the end, it empties the `AutoStepAdaptStats` recorder.
 
         :param state: Current state.
@@ -310,37 +313,48 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         stats = state.stats
         round = utils.current_round(stats.n_samples)
-        new_base_step_size, new_estimated_std_devs, new_adapt_stats = lax.cond(
+        new_base_step_size, new_sqrt_var, new_adapt_stats = lax.cond(
             force or jnp.logical_and(
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
-            lambda t: (
-                t[2].mean_step_size, 
-                jnp.where(
-                    t[2].vars_flat > 0,
-                    lax.sqrt(t[2].vars_flat),
-                    t[1] # use the old estimated std dev in case of 0 (which is initialized as ones)
-                ),
-                statistics.empty_adapt_stats_recorder(t[2])
-            ),
+            partial(update_sampler_params, self.preconditioner),
             util.identity,
-            (state.base_step_size, state.estimated_std_devs, stats.adapt_stats)
+            (state.base_step_size, state.sqrt_var, stats.adapt_stats)
         )
         new_stats = stats._replace(adapt_stats = new_adapt_stats)
         state = state._replace(
-            base_step_size = new_base_step_size, estimated_std_devs = new_estimated_std_devs,
+            base_step_size = new_base_step_size, sqrt_var = new_sqrt_var,
             stats = new_stats
         )
         # jax.debug.print(
         #     """
         #     n_samples={n}, round={r}, sample_idx={s},
-        #     base_step_size={b}, estimated_std_devs={e},
+        #     base_step_size={b}, sqrt_var={e},
         #     mean_step_size={ms}, mean_acc_prob={ma},
         #     means_flat={m}, vars_flat={v}""", ordered=True,
         #     n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
-        #     b=state.base_step_size, e=state.estimated_std_devs,
+        #     b=state.base_step_size, e=state.sqrt_var,
         #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
         #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
         return state
 
+
+def update_sampler_params(preconditioner, args):
+    base_step_size, sqrt_var, adapt_stats = args
+    new_base_step_size = adapt_stats.mean_step_size
+    if preconditioning.is_dense(preconditioner):
+        # add exponentially decaying regularization to prevent numerical issues
+        # this avoids having to check eigenvalues which would be too costly
+        n = adapt_stats.sample_idx
+        new_sqrt_var = lax.linalg.cholesky(
+            adapt_stats.vars_flat + jnp.eye(*sqrt_var.shape) * jnp.exp(-n)
+        )
+    else:
+        new_sqrt_var = jnp.where(
+            adapt_stats.vars_flat > 0,
+            lax.sqrt(adapt_stats.vars_flat),
+            sqrt_var # use the old sqrt_var in case of 0 (which is initialized as ones)
+        )
+    new_adapt_stats = statistics.empty_adapt_stats_recorder(adapt_stats)
+    return (new_base_step_size, new_sqrt_var, new_adapt_stats)
