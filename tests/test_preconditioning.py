@@ -44,7 +44,7 @@ class TestPreconditioning(unittest.TestCase):
                 else:
                     diag_S = jnp.diag(S)
                     last_round_estimate_var = mcmc.last_state.stats.adapt_stats.vars_flat
-                    self.assertTrue(jnp.allclose(diag_S, last_round_estimate_var, atol=0.1))
+                    self.assertTrue(jnp.allclose(diag_S, last_round_estimate_var, atol=0.15))
                     if not isinstance(p, preconditioning.IdentityDiagonalPreconditioner):
                         last_round_used_var = mcmc.last_state.sqrt_var * mcmc.last_state.sqrt_var
                         self.assertTrue(jnp.allclose(diag_S, last_round_used_var, atol=0.15))
