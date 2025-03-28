@@ -14,18 +14,25 @@ class AutoRWMH(autostep.AutoStep):
         self,
         model=None,
         potential_fn=None,
+        tempered_potential = None,
         selector = selectors.SymmetricSelector(),
-        preconditioner = preconditioning.MixDiagonalPreconditioner()
+        preconditioner = preconditioning.MixDiagonalPreconditioner(),
+        init_inv_temp = None
     ):
         self._model = model
         self._potential_fn = potential_fn
+        self.tempered_potential = tempered_potential
         self._postprocess_fn = None
         self.selector = selector
         self.preconditioner = preconditioner
+        self.init_inv_temp = (
+            None if init_inv_temp is None else jnp.array(init_inv_temp)
+        )
 
     def update_log_joint(self, state):
-        x, v_flat, *extra = state
-        new_log_joint = -self._potential_fn(x) - utils.std_normal_potential(v_flat)
+        x, v_flat, *_ = state
+        new_temp_pot = self.tempered_potential(x, state.inv_temp)
+        new_log_joint = -new_temp_pot - utils.std_normal_potential(v_flat)
         new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
         return state._replace(log_joint = new_log_joint, stats = new_stats)
     

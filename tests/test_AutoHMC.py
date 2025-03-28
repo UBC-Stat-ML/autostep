@@ -21,7 +21,7 @@ class TestAutoHMC(unittest.TestCase):
         for _ in range(20):
             rng_key, x_key = random.split(rng_key)
             x = random.normal(x_key, 2)
-            self.assertTrue(jnp.all(kernel_grad(x) == true_grad(x)))
+            self.assertTrue(jnp.all(kernel_grad(x, None) == true_grad(x)))
 
 if __name__ == '__main__':
     unittest.main()
