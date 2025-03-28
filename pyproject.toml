@@ -1,7 +1,7 @@
 [project]
 name = "autostep"
 version = "0.1.0"
-description = "A numpyro implementation of autoStep methods"
+description = "A NumPyro implementation of autoStep methods"
 authors = [
     {name = "Miguel Biron-Lattes",email = "miguelbl9@gmail.com"}
 ]
@@ -9,7 +9,7 @@ license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "numpyro>=0.16.1",
+    "numpyro",
 ]
 
 [project.urls]

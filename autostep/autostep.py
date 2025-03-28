@@ -14,6 +14,7 @@ from numpyro import util
 from autostep import utils
 from autostep import statistics
 from autostep import preconditioning
+from autostep import tempering
 
 AutoStepState = namedtuple(
     "AutoStepState",
@@ -24,7 +25,8 @@ AutoStepState = namedtuple(
         "rng_key",
         "stats",
         "base_step_size",
-        "sqrt_var"
+        "sqrt_var",
+        "inv_temp"
     ],
 )
 """
@@ -42,19 +44,27 @@ It consists of the fields:
    of the flattened sample field. It can be either a vector (diagonal 
    preconditioning) or a matrix (dense preconditioner). Fixed within a round 
    but updated at the end of each adaptation round.
+ - **inv_temp**: optional inverse temperature parameter to target an annealed
+   version of a model's distribution. 
 """
 
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     def init_alter_step_size_loop_funs(self):
         self.shrink_step_size_cond_fun = utils.gen_alter_step_size_cond_fun(
-            self.selector.should_shrink)
-        self.shrink_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, -1)
+            self.selector.should_shrink
+        )
+        self.shrink_step_size_body_fun = utils.gen_alter_step_size_body_fun(
+            self, -1
+        )
         self.grow_step_size_cond_fun = utils.gen_alter_step_size_cond_fun(
-            self.selector.should_grow)
-        self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(self, 1)
+            self.selector.should_grow
+        )
+        self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(
+            self, 1
+        )
     
-    def init_state(self, initial_params, rng_key):
+    def init_state(self, initial_params, rng_key, init_inv_temp):
         """
         Initialize the state of the sampler.
 
@@ -66,13 +76,14 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return AutoStepState(
             initial_params,
             jnp.zeros(sample_field_flat_shape),
-            0., # Note: not the actual log joint value; needs to be updated 
+            jnp.array(0.), # Note: not the actual log joint value; needs to be updated 
             rng_key,
             statistics.make_stats_recorder(
                 sample_field_flat_shape, self.preconditioner
             ),
-            1.0,
-            utils.init_sqrt_var(sample_field_flat_shape, self.preconditioner)
+            jnp.array(1.),
+            utils.init_sqrt_var(sample_field_flat_shape, self.preconditioner),
+            init_inv_temp
         )
     
     def init_extras(self, state):
@@ -92,12 +103,26 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # initialize model if it exists, and if so, use it to get initial parameters
         if self._model is not None:
             rng_key, rng_key_init = random.split(rng_key)
-            initial_params, self._potential_fn, self._postprocess_fn = utils.init_model(
+            new_params, self._potential_fn, self._postprocess_fn = utils.init_model(
                 self._model, rng_key_init, model_args, model_kwargs
             )
-        
+            if initial_params is None:
+                initial_params = new_params
+            
+            # initialize the tempered potential function
+            self.tempered_potential = partial(
+                tempering.tempered_potential, 
+                self._model, 
+                model_args, 
+                model_kwargs
+            )
+        elif self.tempered_potential is None:
+            self.tempered_potential = lambda x,_: self._potential_fn(x)
+
         # initialize the state of the autostep sampler
-        initial_state = self.init_state(initial_params, rng_key)
+        initial_state = self.init_state(
+            initial_params, rng_key, self.init_inv_temp
+        )
 
         # carry out any other initialization required by an autoStep kernel
         initial_state = self.init_extras(initial_state)

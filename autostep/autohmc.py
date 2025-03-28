@@ -16,24 +16,31 @@ class AutoHMC(autostep.AutoStep):
         self,
         model=None,
         potential_fn=None,
+        tempered_potential = None,
         n_leapgrog_steps = 1,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.MixDiagonalPreconditioner(),
+        init_inv_temp = None
     ):
         self._model = model
         self._potential_fn = potential_fn
+        self.tempered_potential = tempered_potential
         self._postprocess_fn = None
         self.n_leapgrog_steps = n_leapgrog_steps
         self.selector = selector
         self.preconditioner = preconditioner
+        self.init_inv_temp = (
+            None if init_inv_temp is None else jnp.array(init_inv_temp)
+        )
     
     def init_extras(self, initial_state):
-        self.integrator = gen_integrator(self._potential_fn, initial_state)
+        self.integrator = gen_integrator(self.tempered_potential, initial_state)
         return initial_state
     
     def update_log_joint(self, state):
         x, v_flat, *_ = state
-        new_log_joint = -self._potential_fn(x) - std_normal_potential(v_flat)
+        new_temp_pot = self.tempered_potential(x, state.inv_temp)
+        new_log_joint = -new_temp_pot - std_normal_potential(v_flat)
         new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
         return state._replace(log_joint = new_log_joint, stats = new_stats)
     
@@ -51,21 +58,25 @@ class AutoHMC(autostep.AutoStep):
         return state._replace(v_flat = -state.v_flat)
 
 # helper function to define the leapfrog integrator
-def gen_integrator(potential_fn, initial_state):
+def gen_integrator(tempered_potential, initial_state):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
 
-    def grad_flat_x_flat(x_flat):
+    def grad_flat_x_flat(x_flat, inv_temp):
+        """
+        Flattened gradient of the potential evaluated at a flattened state.
+        """
         return flatten_util.ravel_pytree(
-            jax.grad(potential_fn)(unravel_fn(x_flat))
+            # note: by default, `grad` takes gradient w.r.t. the first arg only
+            jax.grad(tempered_potential)(unravel_fn(x_flat), inv_temp)
         )[0]
 
     # full position and velocity updates
     def integrator_scan_body_fn(carry, _):
-        x_flat, v_flat, step_size, precond_array = carry
+        x_flat, v_flat, step_size, precond_array, inv_temp = carry
         x_flat = x_flat + step_size * apply_precond(precond_array, v_flat)
-        grad_flat = grad_flat_x_flat(x_flat)
+        grad_flat = grad_flat_x_flat(x_flat, inv_temp)
         v_flat = v_flat - step_size * apply_precond(precond_array, grad_flat)
-        return (x_flat, v_flat, step_size, precond_array), None
+        return (x_flat, v_flat, step_size, precond_array, inv_temp), None
     
     # leapfrog integrator using Neal (2011, Fig. 2) trick to use only (n_steps+1) grad evals
     # IMPORTANT: `precond_array` is on the scale of Sigma^{1/2}, where Sigma=Cov(x)
@@ -73,9 +84,9 @@ def gen_integrator(potential_fn, initial_state):
         # jax.debug.print("start: step_size={s}, precond_array={d}", ordered=True, s=step_size, d=precond_array)
 
         # first velocity half-step
-        x, v_flat, *_ = state
+        x, v_flat, *_, inv_temp = state
         x_flat = flatten_util.ravel_pytree(x)[0]
-        grad_flat = grad_flat_x_flat(x_flat)
+        grad_flat = grad_flat_x_flat(x_flat, inv_temp)
         # jax.debug.print("pre 1st momentum half-step: x={x}, x_flat={xf}, grad={g}, v_flat={v}", ordered=True, x=x, xf=x_flat, g=grad_flat, v=v_flat)
         v_flat = v_flat - (step_size/2) * apply_precond(precond_array, grad_flat)
         # jax.debug.print("post: v_flat={v}", ordered=True, v=v_flat)
@@ -85,7 +96,7 @@ def gen_integrator(potential_fn, initial_state):
         # In particular, MALA (n_steps=1) doesn't enter the loop
         x_flat, v_flat, *_ = lax.scan(
             integrator_scan_body_fn,
-            (x_flat, v_flat, step_size, precond_array),
+            (x_flat, v_flat, step_size, precond_array, inv_temp),
             None,
             n_steps-1
         )[0]
@@ -93,7 +104,7 @@ def gen_integrator(potential_fn, initial_state):
 
         # final full position step plus half velocity step
         x_flat = x_flat + step_size * apply_precond(precond_array, v_flat)
-        grad_flat = grad_flat_x_flat(x_flat)
+        grad_flat = grad_flat_x_flat(x_flat, inv_temp)
         v_flat = v_flat - (step_size/2) * apply_precond(precond_array, grad_flat)
         
         # unravel, update state, and return it

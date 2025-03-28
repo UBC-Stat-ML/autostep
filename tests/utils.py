@@ -24,6 +24,30 @@ def toy_unid(n_flips, n_heads=None):
     p = p1*p2
     numpyro.sample('n_heads', dist.Binomial(n_flips, p), obs=n_heads)
 
+# Toy conjugate Gaussian example, admits closed form tempering path
+# For d in ints, m in R, sigma0 >0, and beta>=0,
+#   x ~ pi_beta = N_d(mu(beta), v(beta))
+# where
+#   mu(beta) := beta m v(beta)
+#   v(beta)  := (beta + sigma0^{-2})^{-1}
+#
+# Ref: Biron-Lattes, Campbell, & Bouchard-Côté (2024)
+def toy_conjugate_normal(
+        d = jnp.int32(3), 
+        m = jnp.float32(2.), 
+        sigma0 = jnp.float32(2.)
+    ):
+    def model(sigma0, y):
+        with numpyro.plate('dim', len(y)):
+            x = numpyro.sample('x', dist.Normal(scale=sigma0))
+            numpyro.sample('obs', dist.Normal(x), obs=y)
+
+    # inputs
+    y = jnp.full((d,), m)
+    model_args = (sigma0, y)
+    model_kwargs = {}
+    return model, model_args, model_kwargs
+
 
 def extremal_diagnostics(mcmc):
     """
