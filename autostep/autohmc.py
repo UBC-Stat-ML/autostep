@@ -18,6 +18,7 @@ class AutoHMC(autostep.AutoStep):
         potential_fn=None,
         tempered_potential = None,
         n_leapgrog_steps = 1,
+        init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.MixDiagonalPreconditioner(),
         init_inv_temp = None
@@ -27,6 +28,7 @@ class AutoHMC(autostep.AutoStep):
         self.tempered_potential = tempered_potential
         self._postprocess_fn = None
         self.n_leapgrog_steps = n_leapgrog_steps
+        self.init_base_step_size = init_base_step_size
         self.selector = selector
         self.preconditioner = preconditioner
         self.init_inv_temp = (
