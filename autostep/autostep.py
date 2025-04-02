@@ -52,13 +52,13 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     def init_alter_step_size_loop_funs(self):
         self.shrink_step_size_cond_fun = utils.gen_alter_step_size_cond_fun(
-            self.selector.should_shrink
+            self.selector.should_shrink, self.selector.max_n_iter
         )
         self.shrink_step_size_body_fun = utils.gen_alter_step_size_body_fun(
             self, -1
         )
         self.grow_step_size_cond_fun = utils.gen_alter_step_size_cond_fun(
-            self.selector.should_grow
+            self.selector.should_grow, self.selector.max_n_iter
         )
         self.grow_step_size_body_fun = utils.gen_alter_step_size_body_fun(
             self, 1

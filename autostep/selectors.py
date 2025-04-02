@@ -46,8 +46,12 @@ def _draw_log_unif_bounds(rng_key):
 
 class AsymmetricSelector(StepSizeSelector):
     """
-    Asymmetric selector. 
+    Asymmetric selector.
+
+    :param max_n_iter: Maximum number of step size doubling/halvings.
     """
+    def __init__(self, max_n_iter=jnp.int32(2**20)):
+        self.max_n_iter = max_n_iter
 
     @staticmethod
     def draw_parameters(rng_key):
@@ -68,7 +72,11 @@ class AsymmetricSelector(StepSizeSelector):
 class SymmetricSelector(StepSizeSelector):
     """
     Symmetric selector. 
+
+    :param max_n_iter: Maximum number of step size doubling/halvings.
     """
+    def __init__(self, max_n_iter=jnp.int32(2**20)):
+        self.max_n_iter = max_n_iter
 
     @staticmethod
     def draw_parameters(rng_key):
@@ -90,6 +98,8 @@ class FixedStepSizeSelector(StepSizeSelector):
     """
     A dummy selector that never adjusts the step size. 
     """
+    def __init__(self):
+        self.max_n_iter = jnp.int32(0)
 
     @staticmethod
     def draw_parameters(rng_key):
