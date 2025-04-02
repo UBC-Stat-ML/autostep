@@ -18,10 +18,8 @@ class TestAutoRWMH(unittest.TestCase):
 
     # test reducibility of autoRWMH with asymmetric selector when starting at the mode
     def test_reducibility(self):
-        init_val = jnp.array([1., 2.])
         rng_key = random.key(1234)
         true_mean = 2.
-
         init_val = jnp.array([true_mean, true_mean])
         rng_key, run_key = random.split(rng_key)
         kernel = autorwmh.AutoRWMH(
