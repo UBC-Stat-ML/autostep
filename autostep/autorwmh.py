@@ -15,6 +15,7 @@ class AutoRWMH(autostep.AutoStep):
         model=None,
         potential_fn=None,
         tempered_potential = None,
+        init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.MixDiagonalPreconditioner(),
         init_inv_temp = None
@@ -23,6 +24,7 @@ class AutoRWMH(autostep.AutoStep):
         self._potential_fn = potential_fn
         self.tempered_potential = tempered_potential
         self._postprocess_fn = None
+        self.init_base_step_size = init_base_step_size
         self.selector = selector
         self.preconditioner = preconditioner
         self.init_inv_temp = (

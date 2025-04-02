@@ -64,7 +64,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             self, 1
         )
     
-    def init_state(self, initial_params, rng_key, init_inv_temp):
+    def init_state(self, initial_params, rng_key, init_base_step_size, init_inv_temp):
         """
         Initialize the state of the sampler.
 
@@ -81,7 +81,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             statistics.make_stats_recorder(
                 sample_field_flat_shape, self.preconditioner
             ),
-            jnp.array(1.),
+            jnp.array(init_base_step_size),
             utils.init_sqrt_var(sample_field_flat_shape, self.preconditioner),
             init_inv_temp
         )
@@ -121,7 +121,10 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         # initialize the state of the autostep sampler
         initial_state = self.init_state(
-            initial_params, rng_key, self.init_inv_temp
+            initial_params,
+            rng_key, 
+            self.init_base_step_size, 
+            self.init_inv_temp
         )
 
         # carry out any other initialization required by an autoStep kernel
