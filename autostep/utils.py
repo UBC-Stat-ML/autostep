@@ -119,10 +119,14 @@ def copy_state_extras(source, dest):
     return dest._replace(stats = source.stats, rng_key = source.rng_key)
 
 def gen_alter_step_size_cond_fun(pred_fun):
+    max_n_iter = jnp.int32(32) # hard limit on the number of iterations
     def alter_step_size_cond_fun(args):
         state, exponent, next_log_joint, init_log_joint, selector_params, *extra = args
         log_diff = next_log_joint - init_log_joint
-        decision = pred_fun(selector_params, log_diff)
+        decision = jnp.logical_and(
+            lax.abs(exponent) < max_n_iter,
+            pred_fun(selector_params, log_diff)
+        )
 
         # jax.debug.print("{f}? Log-diff: {l} + bounds: ({a},{b}) => Decision: {d}", 
         #         ordered=True, f=pred_fun.__name__, l=log_diff, a=selector_params[0], 

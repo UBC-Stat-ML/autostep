@@ -59,7 +59,10 @@ class AsymmetricSelector(StepSizeSelector):
 
     @staticmethod
     def should_shrink(bounds, log_diff):
-        return jnp.logical_or(~lax.is_finite(log_diff), log_diff < bounds[0])
+        return jnp.logical_or(
+            jnp.logical_not(lax.is_finite(log_diff)), 
+            log_diff < bounds[0]
+        )
 
 
 class SymmetricSelector(StepSizeSelector):
@@ -77,8 +80,10 @@ class SymmetricSelector(StepSizeSelector):
 
     @staticmethod
     def should_shrink(bounds, log_diff):
-        invalid_log_diff = ~lax.is_finite(log_diff)
-        return jnp.logical_or(invalid_log_diff, lax.abs(log_diff) + bounds[0] > 0)
+        return jnp.logical_or(
+            jnp.logical_not(lax.is_finite(log_diff)),
+            lax.abs(log_diff) + bounds[0] > 0
+        )
 
 
 class FixedStepSizeSelector(StepSizeSelector):
