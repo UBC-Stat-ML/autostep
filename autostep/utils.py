@@ -39,6 +39,16 @@ def apply_precond(precond_array, vec):
         else precond_array @ vec
     )
 
+@jax.jit
+def numerically_safe_diff(x0, x1):
+    """Return `x1-x0` if x1 is not the next float after x0, and 0 otherwise."""
+    return jax.lax.cond(
+        jax.lax.nextafter(x0, x1) == x1,
+        lambda t: jnp.zeros_like(t[0]),
+        lambda t: t[1]-t[0],
+        (x0,x1)
+    ) 
+
 ###############################################################################
 # Rounds-based sampling arithmetic
 #
@@ -128,7 +138,7 @@ def gen_alter_step_size_cond_fun(pred_fun, max_n_iter):
             selector_params, 
             precond_array
         ) = args
-        log_diff = next_log_joint - init_log_joint
+        log_diff = numerically_safe_diff(init_log_joint,next_log_joint)
         decision = jnp.logical_and(
             lax.abs(exponent) < max_n_iter,     # bail if max number of iterations reached
             pred_fun(selector_params, log_diff)
@@ -157,14 +167,15 @@ def gen_alter_step_size_body_fun(kernel, direction):
 
         # debug
         jax.debug.print(
-            "dir: {d}: + exp: {e} + eps: {s:.8f} + (L0, L1, DL): ({l0:.2f},{l1:.2f},{dl:.2f}) + bounds: ({a},{b})", 
+            "dir: {d}: + exp: {e} + eps: {s:.8f} + (L0, L1, DL, NDL): ({l0:.2f},{l1:.2f},{dl:.2f},{ndl:.2f}) + bounds: ({a},{b})", 
             ordered=True,
             d=direction, 
             e=exponent,
             s=eps,
             l0=init_log_joint,
             l1=next_log_joint,
-            dl=next_log_joint-init_log_joint, 
+            dl=next_log_joint-init_log_joint,
+            ndl=numerically_safe_diff(init_log_joint,next_log_joint),
             a=selector_params[0],
             b=selector_params[1]
         )
