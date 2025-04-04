@@ -58,7 +58,9 @@ class TestKernels(unittest.TestCase):
             for sel in (
                     selectors.FixedStepSizeSelector(),
                     selectors.AsymmetricSelector(),
-                    selectors.SymmetricSelector()
+                    selectors.SymmetricSelector(),
+                    selectors.DeterministicAsymmetricSelector(),
+                    selectors.DeterministicSymmetricSelector()
                 ):
                 with self.subTest(kernel_class=kernel_class, sel=sel):
                     rng_key, run_key = random.split(rng_key)
