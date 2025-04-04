@@ -5,9 +5,8 @@ import jax.numpy as jnp
 
 class StepSizeSelector(ABC):
 
-    @staticmethod
     @abstractmethod
-    def draw_parameters(rng_key):
+    def draw_parameters(self, rng_key):
         """
         Draw the random parameters used (if any) by the selector.
 
@@ -44,18 +43,30 @@ class StepSizeSelector(ABC):
 def _draw_log_unif_bounds(rng_key):
     return lax.sort(random.exponential(rng_key, (2,)) * (-1))
 
+def make_deterministic_bounds_sampler(p_lo, p_hi):
+    assert p_lo < p_hi and 0 < p_lo and p_hi <= 1
+    fixed_bounds = jnp.log(jnp.array([p_lo, p_hi]))
+    return (lambda _: fixed_bounds)
+
 class AsymmetricSelector(StepSizeSelector):
     """
     Asymmetric selector.
 
     :param max_n_iter: Maximum number of step size doubling/halvings.
+    :param bounds_sampler: A function that takes a PRNG key and samples a pair
+        of endpoints used in the step-size selection loop. Defaults to ordered
+        log-uniform random variables.
     """
-    def __init__(self, max_n_iter=jnp.int32(2**20)):
+    def __init__(
+            self, 
+            max_n_iter=jnp.int32(2**20), 
+            bounds_sampler=_draw_log_unif_bounds
+        ):
         self.max_n_iter = max_n_iter
+        self.bounds_sampler = bounds_sampler
 
-    @staticmethod
-    def draw_parameters(rng_key):
-        return _draw_log_unif_bounds(rng_key)
+    def draw_parameters(self, rng_key):
+        return self.bounds_sampler(rng_key)
 
     @staticmethod
     def should_grow(bounds, log_diff):
@@ -68,19 +79,40 @@ class AsymmetricSelector(StepSizeSelector):
             log_diff < bounds[0]
         )
 
+def DeterministicAsymmetricSelector(p_lo=0.1, p_hi=0.9, *args, **kwargs):
+    """
+    Asymmetric selector with fixed deterministic endpoints.
+
+    :param p_lo: Left endpoint in [0,1].
+    :param p_hi: Right endpoint in [0,1].
+    :param *args: Additional arguments for `AsymmetricSelector`.
+    :param **kwargs: Additional keyword arguments for `AsymmetricSelector`.
+    """
+    return AsymmetricSelector(
+        *args,
+        bounds_sampler = make_deterministic_bounds_sampler(p_lo, p_hi),
+        **kwargs
+    )
 
 class SymmetricSelector(StepSizeSelector):
     """
-    Symmetric selector. 
+    Symmetric selector.
 
     :param max_n_iter: Maximum number of step size doubling/halvings.
+    :param bounds_sampler: A function that takes a PRNG key and samples a pair
+        of endpoints used in the step-size selection loop. Defaults to ordered
+        log-uniform random variables.
     """
-    def __init__(self, max_n_iter=jnp.int32(2**20)):
+    def __init__(
+            self, 
+            max_n_iter=jnp.int32(2**20), 
+            bounds_sampler=_draw_log_unif_bounds
+        ):
         self.max_n_iter = max_n_iter
+        self.bounds_sampler = bounds_sampler
 
-    @staticmethod
-    def draw_parameters(rng_key):
-        return _draw_log_unif_bounds(rng_key)
+    def draw_parameters(self, rng_key):
+        return self.bounds_sampler(rng_key)
 
     @staticmethod
     def should_grow(bounds, log_diff):
@@ -93,6 +125,20 @@ class SymmetricSelector(StepSizeSelector):
             lax.abs(log_diff) + bounds[0] > 0
         )
 
+def DeterministicSymmetricSelector(p_lo=0.1, p_hi=0.9, *args, **kwargs):
+    """
+    Symmetric selector with fixed deterministic endpoints.
+
+    :param p_lo: Left endpoint in [0,1].
+    :param p_hi: Right endpoint in [0,1].
+    :param *args: Additional arguments for `SymmetricSelector`.
+    :param **kwargs: Additional keyword arguments for `SymmetricSelector`.
+    """
+    return SymmetricSelector(
+        *args,
+        bounds_sampler = make_deterministic_bounds_sampler(p_lo, p_hi),
+        **kwargs
+    )
 
 class FixedStepSizeSelector(StepSizeSelector):
     """
@@ -101,8 +147,7 @@ class FixedStepSizeSelector(StepSizeSelector):
     def __init__(self):
         self.max_n_iter = jnp.int32(0)
 
-    @staticmethod
-    def draw_parameters(rng_key):
+    def draw_parameters(self, rng_key):
         return jnp.zeros((2,))
 
     @staticmethod
