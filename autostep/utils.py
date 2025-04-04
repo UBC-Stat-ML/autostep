@@ -22,9 +22,11 @@ def proto_checkified_is_zero(x):
 
 checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 
+@jax.jit
 def std_normal_potential(v):
     return (v*v).sum()/2
 
+@jax.jit
 def ceil_log2(x):
     """
     Ceiling of log2(x). Guaranteed to be an integer.
@@ -32,12 +34,25 @@ def ceil_log2(x):
     n_bits = jax.lax.clz(jnp.zeros_like(x))
     return n_bits - jax.lax.clz(x) - (jax.lax.population_count(x)==1)
 
+@jax.jit
 def apply_precond(precond_array, vec):
     return (
         precond_array * vec 
-        if len(jnp.shape(precond_array)) == 1 
+        if jnp.ndim(precond_array) == 1 
         else precond_array @ vec
     )
+
+@jax.jit
+def numerically_safe_diff(x0, x1):
+    """
+    Return `x1-x0` if x1 is not the next float after x0, and 0 otherwise.
+    """
+    return jax.lax.cond(
+        jax.lax.nextafter(x0, x1) == x1,
+        lambda t: jnp.zeros_like(t[0]),
+        lambda t: t[1]-t[0],
+        (x0,x1)
+    ) 
 
 ###############################################################################
 # Rounds-based sampling arithmetic
@@ -112,6 +127,8 @@ def next_state_rejected(args):
 # functions that control the step-size growing and shrinking loops
 ###############################################################################
 
+DEBUG_ALTER_STEP_SIZE = None # anything other than None will print during step size loop
+
 def step_size(base_step_size, exponent):
     return base_step_size * (2.0 ** exponent)
 
@@ -120,31 +137,38 @@ def copy_state_extras(source, dest):
 
 def gen_alter_step_size_cond_fun(pred_fun, max_n_iter):
     def alter_step_size_cond_fun(args):
-        state, exponent, next_log_joint, init_log_joint, selector_params, *extra = args
-        log_diff = next_log_joint - init_log_joint
+        (
+            state, 
+            exponent, 
+            next_log_joint, 
+            init_log_joint,
+            selector_params, 
+            precond_array
+        ) = args
+
+        # `numerically_safe_diff` is used to avoid corner cases where the step
+        # size is 0 already but, because of extreme nonlinearities, the 
+        # potential at this fictituous "next" point gives a log_joint that is
+        # exactly equal to the next float of `init_log_joint`
+        log_diff = numerically_safe_diff(init_log_joint,next_log_joint)
         decision = jnp.logical_and(
             lax.abs(exponent) < max_n_iter,     # bail if max number of iterations reached
             pred_fun(selector_params, log_diff)
         )
-
-        # # debug
-        # jax.debug.print(
-        #     "{f}? exp: {e} + (L0, L1, DL): {l} + bounds: ({a},{b}) => Decision: {d}", 
-        #     ordered=True, 
-        #     f=pred_fun.__name__, 
-        #     e=exponent,
-        #     l=(init_log_joint,next_log_joint,log_diff), 
-        #     a=selector_params[0],
-        #     b=selector_params[1], 
-        #     d=decision
-        # )
 
         return decision
     return alter_step_size_cond_fun
 
 def gen_alter_step_size_body_fun(kernel, direction):
     def alter_step_size_body_fun(args):
-        state, exponent, _, *extra, precond_array = args
+        (
+            state, 
+            exponent, 
+            next_log_joint, 
+            init_log_joint,
+            selector_params, 
+            precond_array
+        ) = args
         exponent = exponent + direction
         eps = step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(
@@ -153,10 +177,29 @@ def gen_alter_step_size_body_fun(kernel, direction):
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)
 
-        # jax.debug.print(
-        #     "Direction: {d}, Step size: {eps}, n_pot_evals: {n}",
-        #     ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
+        # maybe print debug info
+        if DEBUG_ALTER_STEP_SIZE is not None:
+            jax.debug.print(
+                "dir: {d}: + exp: {e} + eps: {s:.8f} + (L0, L1, DL, NDL): ({l0:.2f},{l1:.2f},{dl:.2f},{ndl:.2f}) + bounds: ({a},{b})", 
+                ordered=True,
+                d=direction, 
+                e=exponent,
+                s=eps,
+                l0=init_log_joint,
+                l1=next_log_joint,
+                dl=next_log_joint-init_log_joint,
+                ndl=numerically_safe_diff(init_log_joint,next_log_joint),
+                a=selector_params[0],
+                b=selector_params[1]
+            )
 
-        return (state, exponent, next_log_joint, *extra, precond_array)
+        return (
+            state, 
+            exponent, 
+            next_log_joint, 
+            init_log_joint,
+            selector_params, 
+            precond_array
+        )
 
     return alter_step_size_body_fun
