@@ -120,31 +120,33 @@ def copy_state_extras(source, dest):
 
 def gen_alter_step_size_cond_fun(pred_fun, max_n_iter):
     def alter_step_size_cond_fun(args):
-        state, exponent, next_log_joint, init_log_joint, selector_params, *extra = args
+        (
+            state, 
+            exponent, 
+            next_log_joint, 
+            init_log_joint,
+            selector_params, 
+            precond_array
+        ) = args
         log_diff = next_log_joint - init_log_joint
         decision = jnp.logical_and(
             lax.abs(exponent) < max_n_iter,     # bail if max number of iterations reached
             pred_fun(selector_params, log_diff)
         )
 
-        # # debug
-        # jax.debug.print(
-        #     "{f}? exp: {e} + (L0, L1, DL): {l} + bounds: ({a},{b}) => Decision: {d}", 
-        #     ordered=True, 
-        #     f=pred_fun.__name__, 
-        #     e=exponent,
-        #     l=(init_log_joint,next_log_joint,log_diff), 
-        #     a=selector_params[0],
-        #     b=selector_params[1], 
-        #     d=decision
-        # )
-
         return decision
     return alter_step_size_cond_fun
 
 def gen_alter_step_size_body_fun(kernel, direction):
     def alter_step_size_body_fun(args):
-        state, exponent, _, *extra, precond_array = args
+        (
+            state, 
+            exponent, 
+            next_log_joint, 
+            init_log_joint,
+            selector_params, 
+            precond_array
+        ) = args
         exponent = exponent + direction
         eps = step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(
@@ -153,10 +155,27 @@ def gen_alter_step_size_body_fun(kernel, direction):
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)
 
-        # jax.debug.print(
-        #     "Direction: {d}, Step size: {eps}, n_pot_evals: {n}",
-        #     ordered=True, d=direction, eps=eps, n=state.stats.n_pot_evals)
+        # debug
+        jax.debug.print(
+            "dir: {d}: + exp: {e} + eps: {s:.8f} + (L0, L1, DL): ({l0:.2f},{l1:.2f},{dl:.2f}) + bounds: ({a},{b})", 
+            ordered=True,
+            d=direction, 
+            e=exponent,
+            s=eps,
+            l0=init_log_joint,
+            l1=next_log_joint,
+            dl=next_log_joint-init_log_joint, 
+            a=selector_params[0],
+            b=selector_params[1]
+        )
 
-        return (state, exponent, next_log_joint, *extra, precond_array)
+        return (
+            state, 
+            exponent, 
+            next_log_joint, 
+            init_log_joint,
+            selector_params, 
+            precond_array
+        )
 
     return alter_step_size_body_fun
