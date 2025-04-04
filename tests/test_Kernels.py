@@ -22,7 +22,7 @@ class TestKernels(unittest.TestCase):
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        partial(autohmc.AutoHMC, n_leapgrog_steps=10)
+        partial(autohmc.AutoHMC, n_leapfrog_steps=10)
     )
     
     def test_involution(self):

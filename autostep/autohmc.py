@@ -17,7 +17,7 @@ class AutoHMC(autostep.AutoStep):
         model=None,
         potential_fn=None,
         tempered_potential = None,
-        n_leapgrog_steps = 1,
+        n_leapfrog_steps = 1,
         init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.MixDiagonalPreconditioner(),
@@ -27,7 +27,7 @@ class AutoHMC(autostep.AutoStep):
         self._potential_fn = potential_fn
         self.tempered_potential = tempered_potential
         self._postprocess_fn = None
-        self.n_leapgrog_steps = n_leapgrog_steps
+        self.n_leapfrog_steps = n_leapfrog_steps
         self.init_base_step_size = init_base_step_size
         self.selector = selector
         self.preconditioner = preconditioner
@@ -53,7 +53,7 @@ class AutoHMC(autostep.AutoStep):
     
     def involution_main(self, step_size, state, precond_array):
         return self.integrator(
-            step_size, state, precond_array, self.n_leapgrog_steps
+            step_size, state, precond_array, self.n_leapfrog_steps
         )
     
     def involution_aux(self, step_size, state, precond_array):
@@ -119,4 +119,4 @@ def gen_integrator(tempered_potential, initial_state):
 
 # autoMALA helper
 def AutoMALA(*args, **kwargs):
-    return AutoHMC(n_leapgrog_steps=1, *args, **kwargs)
+    return AutoHMC(n_leapfrog_steps=1, *args, **kwargs)

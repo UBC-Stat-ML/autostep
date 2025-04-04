@@ -39,7 +39,7 @@ n_rounds = 14
 n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/keep
 kernel = AutoHMC(
     eight_schools,
-    n_leapgrog_steps=32,
+    n_leapfrog_steps=32,
     preconditioner = preconditioning.MixDensePreconditioner()
 )
 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep)
