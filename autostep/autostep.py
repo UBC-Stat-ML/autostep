@@ -351,7 +351,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
-            partial(update_sampler_params, self.preconditioner),
+            partial(statistics.update_sampler_params, self.preconditioner),
             util.identity,
             (state.base_step_size, state.sqrt_var, stats.adapt_stats)
         )
@@ -372,23 +372,3 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
         #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
         return state
-
-def update_sampler_params(preconditioner, args):
-    _, sqrt_var, adapt_stats = args
-    new_base_step_size = adapt_stats.mean_step_size
-
-    # adapt the sqrt_var array, regularizing to avoid issues with 
-    # ill-conditioned sample variances
-    # note: this is apparently the approach used in Stan, according to NumPyro
-    # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
-    n = adapt_stats.sample_idx
-    scaled_vars_flat = (n / (n + 5)) * adapt_stats.vars_flat
-    eps = 1e-3 * (5 / (n + 5))
-    if preconditioning.is_dense(preconditioner):
-        new_sqrt_var = lax.linalg.cholesky(
-            scaled_vars_flat + eps*jnp.identity(sqrt_var.shape[0])
-        )
-    else:
-        new_sqrt_var = lax.sqrt(scaled_vars_flat + eps)
-    new_adapt_stats = statistics.empty_adapt_stats_recorder(adapt_stats)
-    return (new_base_step_size, new_sqrt_var, new_adapt_stats)
