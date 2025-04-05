@@ -22,11 +22,9 @@ def proto_checkified_is_zero(x):
 
 checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 
-@jax.jit
 def std_normal_potential(v):
     return (v*v).sum()/2
 
-@jax.jit
 def ceil_log2(x):
     """
     Ceiling of log2(x). Guaranteed to be an integer.
@@ -34,7 +32,6 @@ def ceil_log2(x):
     n_bits = jax.lax.clz(jnp.zeros_like(x))
     return n_bits - jax.lax.clz(x) - (jax.lax.population_count(x)==1)
 
-@jax.jit
 def apply_precond(precond_array, vec):
     return (
         precond_array * vec 
@@ -42,7 +39,6 @@ def apply_precond(precond_array, vec):
         else precond_array @ vec
     )
 
-@jax.jit
 def numerically_safe_diff(x0, x1):
     """
     Return `x1-x0` if x1 is not the next float after x0, and 0 otherwise.

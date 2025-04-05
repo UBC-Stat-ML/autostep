@@ -13,7 +13,6 @@ def make_const_off_diag_corr_mat(dim, rho):
 def make_correlated_Gaussian_potential(S=None, dim=None, rho=None):
     S = make_const_off_diag_corr_mat(dim, rho) if S is None else S
     P = jnp.linalg.inv(S)
-    @jax.jit
     def pot_fn(x):
         return 0.5*jnp.dot(x.T, jnp.dot(P, x))
     return pot_fn

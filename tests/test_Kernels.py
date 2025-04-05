@@ -9,11 +9,9 @@ from jax import numpy as jnp
 
 from numpyro.infer import MCMC
 
-from autostep import autostep
 from autostep import autohmc
 from autostep import autorwmh
 from autostep import selectors
-from autostep import statistics
 from autostep import utils
 
 

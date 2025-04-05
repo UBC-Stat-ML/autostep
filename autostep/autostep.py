@@ -199,7 +199,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         :return: Updated state.
         """
         raise NotImplementedError
-
+    
     def sample(self, state, model_args, model_kwargs):
         # refresh auxiliary variables (e.g., momentum), update the log joint 
         # density, and finally check if the latter is finite
@@ -243,7 +243,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         reversibility_passed = fwd_exponent == bwd_exponent
 
         # Metropolis-Hastings step
-        log_joint_diff = proposed_state.log_joint - state.log_joint
+        # note: when the magnitude of log_joint is ~ 1e8, the difference in
+        # Float32 precision of two floats next to each other can be >> 1.
+        # For this reason, we consider 2 consecutive floats to be equal.
+        log_joint_diff = utils.numerically_safe_diff(
+            state.log_joint, proposed_state.log_joint
+        )
         acc_prob = lax.clamp(0., reversibility_passed * lax.exp(log_joint_diff), 1.)
         # jax.debug.print(
         #     "bwd done: reversibility_passed={r}, acc_prob={a}", ordered=True,
@@ -352,7 +357,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
         new_stats = stats._replace(adapt_stats = new_adapt_stats)
         state = state._replace(
-            base_step_size = new_base_step_size, sqrt_var = new_sqrt_var,
+            base_step_size = new_base_step_size, 
+            sqrt_var = new_sqrt_var,
             stats = new_stats
         )
         # jax.debug.print(
@@ -367,25 +373,22 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
         return state
 
-
 def update_sampler_params(preconditioner, args):
-    base_step_size, sqrt_var, adapt_stats = args
+    _, sqrt_var, adapt_stats = args
     new_base_step_size = adapt_stats.mean_step_size
+
+    # adapt the sqrt_var array, regularizing to avoid issues with 
+    # ill-conditioned sample variances
+    # note: this is apparently the approach used in Stan, according to NumPyro
+    # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
+    n = adapt_stats.sample_idx
+    scaled_vars_flat = (n / (n + 5)) * adapt_stats.vars_flat
+    eps = 1e-3 * (5 / (n + 5))
     if preconditioning.is_dense(preconditioner):
-        # add exponentially decaying regularization to prevent numerical issues
-        # this avoids having to check eigenvalues which would be too costly
-        eps = lax.max(
-            jax.numpy.finfo(sqrt_var.dtype).eps, 
-            jnp.exp(-adapt_stats.sample_idx)
-        )
         new_sqrt_var = lax.linalg.cholesky(
-            adapt_stats.vars_flat + eps*jnp.eye(*sqrt_var.shape)
+            scaled_vars_flat + eps*jnp.identity(sqrt_var.shape[0])
         )
     else:
-        new_sqrt_var = jnp.where(
-            adapt_stats.vars_flat > 0,
-            lax.sqrt(adapt_stats.vars_flat),
-            sqrt_var # use the old sqrt_var in case of 0 (which is initialized as ones)
-        )
+        new_sqrt_var = lax.sqrt(scaled_vars_flat + eps)
     new_adapt_stats = statistics.empty_adapt_stats_recorder(adapt_stats)
     return (new_base_step_size, new_sqrt_var, new_adapt_stats)

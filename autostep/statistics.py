@@ -1,6 +1,8 @@
 from collections import namedtuple
-import jax
+
+from jax import lax
 from jax import numpy as jnp
+
 from autostep.preconditioning import is_dense
 
 AutoStepAdaptStats = namedtuple(
@@ -82,7 +84,6 @@ def increase_n_pot_evals_by_one(stats):
 #           = m_n + (x_{n+1}-m_n)/(n+1)
 # use Welford's_online_algorithm to update variances
 #     v_n+1 = [n*v_n + (x_n+1 - m_n+1)(x_n+1 - m_n)]/(n+1)
-@jax.jit
 def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
     # update whole-run statistics
     n_pot_evals, n_samples, adapt_stats = stats
@@ -109,8 +110,34 @@ def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
     )
 
 def delta_vars(vars_flat, dx1, dx2):
-    if len(jnp.shape(vars_flat))==1:
+    if jnp.ndim(vars_flat)==1:
         return dx1 * dx2
     else:
         return jnp.outer(dx1, dx2)
 
+
+## Update sampler parameters using the adaptation statitics of a round
+## See `adapt` method in AutoStep
+def update_sampler_params(preconditioner, args):
+    *_, adapt_stats = args
+
+    # set the average step size of the prev round as the new base step size
+    new_base_step_size = adapt_stats.mean_step_size
+
+    # adapt the sqrt_var array, regularizing to avoid issues with 
+    # ill-conditioned sample variances
+    # note: this is apparently the approach used in Stan, according to NumPyro
+    # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
+    n = adapt_stats.sample_idx
+    scaled_vars_flat = (n / (n + 5)) * adapt_stats.vars_flat
+    eps = 1e-3 * (5 / (n + 5))
+    if is_dense(preconditioner):
+        new_sqrt_var = lax.linalg.cholesky(
+            scaled_vars_flat + eps*jnp.identity(scaled_vars_flat.shape[0])
+        )
+    else:
+        new_sqrt_var = lax.sqrt(scaled_vars_flat + eps)
+
+    # empty the adapt recorder and return
+    new_adapt_stats = empty_adapt_stats_recorder(adapt_stats)
+    return (new_base_step_size, new_sqrt_var, new_adapt_stats)
