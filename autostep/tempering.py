@@ -6,7 +6,7 @@ from jax import numpy as jnp
 
 from numpyro.handlers import substitute, trace
 from numpyro.infer import util
-from numpyro.distributions.util import is_identically_one, is_identically_zero
+from numpyro.distributions.util import is_identically_one
 
 
 ##############################################################################
@@ -82,7 +82,6 @@ def trace_from_unconst_samples(
     return trace(substituted_model).get_trace(*model_args, **model_kwargs)
 
 # tempered potential of a model
-@partial(jax.jit, static_argnums=(0,))
 def tempered_potential(model, model_args, model_kwargs, unconstrained_sample, inv_temp = None):
     """
     Build a tempered version of the potential function associated with the

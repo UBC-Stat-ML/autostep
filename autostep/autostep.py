@@ -199,7 +199,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         :return: Updated state.
         """
         raise NotImplementedError
-
+    
     def sample(self, state, model_args, model_kwargs):
         # refresh auxiliary variables (e.g., momentum), update the log joint 
         # density, and finally check if the latter is finite
@@ -243,7 +243,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         reversibility_passed = fwd_exponent == bwd_exponent
 
         # Metropolis-Hastings step
-        log_joint_diff = proposed_state.log_joint - state.log_joint
+        # note: when the magnitude of log_joint is ~ 1e8, the difference in
+        # Float32 precision of two floats next to each other can be >> 1.
+        # For this reason, we consider 2 consecutive floats to be equal.
+        log_joint_diff = utils.numerically_safe_diff(
+            state.log_joint, proposed_state.log_joint
+        )
         acc_prob = lax.clamp(0., reversibility_passed * lax.exp(log_joint_diff), 1.)
         # jax.debug.print(
         #     "bwd done: reversibility_passed={r}, acc_prob={a}", ordered=True,
@@ -346,13 +351,14 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
-            partial(update_sampler_params, self.preconditioner),
+            partial(statistics.update_sampler_params, self.preconditioner),
             util.identity,
             (state.base_step_size, state.sqrt_var, stats.adapt_stats)
         )
         new_stats = stats._replace(adapt_stats = new_adapt_stats)
         state = state._replace(
-            base_step_size = new_base_step_size, sqrt_var = new_sqrt_var,
+            base_step_size = new_base_step_size, 
+            sqrt_var = new_sqrt_var,
             stats = new_stats
         )
         # jax.debug.print(
@@ -366,26 +372,3 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
         #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
         return state
-
-
-def update_sampler_params(preconditioner, args):
-    base_step_size, sqrt_var, adapt_stats = args
-    new_base_step_size = adapt_stats.mean_step_size
-    if preconditioning.is_dense(preconditioner):
-        # add exponentially decaying regularization to prevent numerical issues
-        # this avoids having to check eigenvalues which would be too costly
-        eps = lax.max(
-            jax.numpy.finfo(sqrt_var.dtype).eps, 
-            jnp.exp(-adapt_stats.sample_idx)
-        )
-        new_sqrt_var = lax.linalg.cholesky(
-            adapt_stats.vars_flat + eps*jnp.eye(*sqrt_var.shape)
-        )
-    else:
-        new_sqrt_var = jnp.where(
-            adapt_stats.vars_flat > 0,
-            lax.sqrt(adapt_stats.vars_flat),
-            sqrt_var # use the old sqrt_var in case of 0 (which is initialized as ones)
-        )
-    new_adapt_stats = statistics.empty_adapt_stats_recorder(adapt_stats)
-    return (new_base_step_size, new_sqrt_var, new_adapt_stats)
