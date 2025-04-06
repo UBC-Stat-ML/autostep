@@ -71,7 +71,7 @@ class TestKernels(unittest.TestCase):
                     self.assertEqual(stats.n_samples, n_warmup+n_keep)
                     self.assertEqual(adapt_stats.sample_idx, n_keep)
                     self.assertEqual(n_keep, jnp.shape(mcmc.get_samples())[0])
-                    self.assertTrue(jnp.allclose(state.sqrt_var, jnp.sqrt(true_var), atol=tol, rtol=tol))
+                    self.assertTrue(jnp.allclose(state.var_chol_tril, jnp.sqrt(true_var), atol=tol, rtol=tol))
                     self.assertTrue(jnp.allclose(adapt_stats.means_flat, true_mean, atol=tol, rtol=tol))
                     self.assertTrue(jnp.allclose(adapt_stats.vars_flat, true_var, atol=tol, rtol=tol))
 

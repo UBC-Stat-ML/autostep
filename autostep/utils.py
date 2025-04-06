@@ -22,9 +22,6 @@ def proto_checkified_is_zero(x):
 
 checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 
-def std_normal_potential(v):
-    return (v*v).sum()/2
-
 def ceil_log2(x):
     """
     Ceiling of log2(x). Guaranteed to be an integer.
@@ -162,7 +159,8 @@ def gen_alter_step_size_body_fun(kernel, direction):
         exponent = exponent + direction
         eps = step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(
-            kernel.involution_main(eps, state, precond_state)
+            kernel.involution_main(eps, state, precond_state),
+            precond_state
         )
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)

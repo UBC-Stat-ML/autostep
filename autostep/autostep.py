@@ -11,9 +11,10 @@ from jax import random
 from numpyro import infer
 from numpyro import util
 
-from autostep import utils
+from autostep import preconditioning
 from autostep import statistics
 from autostep import tempering
+from autostep import utils
 
 AutoStepState = namedtuple(
     "AutoStepState",
@@ -79,7 +80,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 sample_field_flat_shape, self.preconditioner
             ),
             jnp.array(init_base_step_size),
-            utils.init_base_precond_state(sample_field_flat_shape, self.preconditioner),
+            preconditioning.init_base_precond_state(
+                sample_field_flat_shape, self.preconditioner
+            ),
             init_inv_temp
         )
     
@@ -148,22 +151,24 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return self._postprocess_fn(*model_args, **model_kwargs)
     
     @abstractmethod
-    def update_log_joint(self, state):
+    def update_log_joint(self, state, precond_state):
         """
         Compute the log joint density for all variables, i.e., including auxiliary.
 
         :param state: Current state.
+        :param precond_state: Preconditioner value.
         :return: Updated state.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def refresh_aux_vars(self, rng_key, state):
+    def refresh_aux_vars(self, rng_key, state, precond_state):
         """
         Refresh auxiliary variables required by the underlying involutive MCMC method.
 
         :param rng_key: Random number generator key.
         :param state: Current state.
+        :param precond_state: Preconditioner value.
         :return: State with updated auxiliary variables.
         """
         raise NotImplementedError
@@ -198,17 +203,19 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         raise NotImplementedError
     
     def sample(self, state, model_args, model_kwargs):
-        # refresh auxiliary variables (e.g., momentum), update the log joint 
-        # density, and finally check if the latter is finite
-        state = self.update_log_joint(self.refresh_aux_vars(state))
-        utils.checkified_is_finite(state.log_joint)
-
         # build a (possibly randomized) preconditioner
         rng_key, precond_key, selector_key = random.split(state.rng_key, 3)
         state = state._replace(rng_key = rng_key) # always update the state with the modified key!
         precond_state = self.preconditioner.maybe_alter_precond_state(
             state.base_precond_state, precond_key
         )
+
+        # refresh auxiliary variables (e.g., momentum), update the log joint 
+        # density, and finally check if the latter is finite
+        state = self.update_log_joint(
+            self.refresh_aux_vars(state, precond_state), precond_state
+        )
+        utils.checkified_is_finite(state.log_joint)
 
         # draw selector parameters
         selector_params = self.selector.draw_parameters(selector_key)
@@ -220,7 +227,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
         fwd_step_size = utils.step_size(state.base_step_size, fwd_exponent)
         proposed_state = self.update_log_joint(
-            self.involution_main(fwd_step_size, state, precond_state)
+            self.involution_main(fwd_step_size, state, precond_state),
+            precond_state
         )
         # jax.debug.print(
         #     "fwd done: step_size={s}, init_log_joint={l}, next_log_joint={ln}, log_joint_diff={ld}, prop_x={x}, prop_v={v}",
@@ -277,7 +285,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     def auto_step_size(self, state, selector_params, precond_state):
         init_log_joint = state.log_joint # Note: assumes the log joint value is up to date!
         next_state = self.update_log_joint(
-            self.involution_main(state.base_step_size, state, precond_state)
+            self.involution_main(state.base_step_size, state, precond_state),
+            precond_state
         )
         next_log_joint = next_state.log_joint
         state = utils.copy_state_extras(next_state, state) # update state's stats and rng_key

@@ -8,7 +8,6 @@ from autostep import autostep
 from autostep import preconditioning
 from autostep import selectors
 from autostep import statistics
-from autostep.utils import std_normal_potential, apply_precond
 
 class AutoHMC(autostep.AutoStep):
 
@@ -20,7 +19,7 @@ class AutoHMC(autostep.AutoStep):
         n_leapfrog_steps = 1,
         init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
-        preconditioner = preconditioning.MixDiagonalPreconditioner(),
+        preconditioner = preconditioning.FixedDiagonalPreconditioner(),
         init_inv_temp = None
     ):
         self._model = model
@@ -39,16 +38,27 @@ class AutoHMC(autostep.AutoStep):
         self.integrator = gen_integrator(self.tempered_potential, initial_state)
         return initial_state
     
-    def update_log_joint(self, state):
+    def update_log_joint(self, state, precond_state):
         x, p_flat, *_ = state
         new_temp_pot = self.tempered_potential(x, state.inv_temp)
-        new_log_joint = -new_temp_pot - std_normal_potential(p_flat)
+        Minv = precond_state.var
+        if jnp.ndim(precond_state.var) == 2:
+            Minv_p_flat = Minv @ p_flat                        
+        else:
+            Minv_p_flat = Minv * p_flat
+        new_kinetic_energy = 0.5*jnp.dot(Minv_p_flat, p_flat)
+        new_log_joint = -new_temp_pot - new_kinetic_energy
         new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
         return state._replace(log_joint = new_log_joint, stats = new_stats)
     
-    def refresh_aux_vars(self, state):
+    def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
-        p_flat = random.normal(v_key, jnp.shape(state.p_flat))
+        v_flat = random.normal(v_key, jnp.shape(state.p_flat))
+        U = precond_state.inv_var_triu_factor
+        if jnp.ndim(U) == 2:
+            p_flat = U @ v_flat
+        else:
+            p_flat = U * v_flat
         return state._replace(p_flat = p_flat, rng_key = rng_key)
     
     def involution_main(self, step_size, state, precond_state):
@@ -94,13 +104,20 @@ class AutoHMC(autostep.AutoStep):
 # Hence, we need S (no-op as this is directly estimated) and U.
 ##############################################################################
 
-def velocity_step(p_flat, step_size, precond_state, grad_flat):
-    return p_flat - step_size * apply_precond(precond_state, grad_flat)
+def velocity_step(p_flat, step_size, grad_flat):
+    return p_flat - step_size * grad_flat
 
 def position_step(x_flat, step_size, precond_state, p_flat):
-    return x_flat + step_size * apply_precond(precond_state, p_flat)
+    if jnp.ndim(precond_state.var) == 2:
+        prec_p_flat = precond_state.var @ p_flat
+    else:
+        prec_p_flat = precond_state.var * p_flat
+    return x_flat + step_size * prec_p_flat
 
-# helper function to define the leapfrog integrator
+# leapfrog integrator using Neal (2011, Fig. 2) trick to use only 
+# (n_steps+1) grad evals
+# IMPORTANT: contrary to HMC convention, `precond_state` is on the scale of
+# Sigma^{1/2}, where Sigma=Cov(x_flat)
 def gen_integrator(tempered_potential, initial_state):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
 
@@ -118,13 +135,9 @@ def gen_integrator(tempered_potential, initial_state):
         x_flat, p_flat, step_size, precond_state, inv_temp = carry
         x_flat    = position_step(x_flat, step_size, precond_state, p_flat)
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
-        p_flat    = velocity_step(p_flat, step_size, precond_state, grad_flat)
+        p_flat    = velocity_step(p_flat, step_size, grad_flat)
         return (x_flat, p_flat, step_size, precond_state, inv_temp), None
     
-    # leapfrog integrator using Neal (2011, Fig. 2) trick to use only 
-    # (n_steps+1) grad evals
-    # IMPORTANT: contrary to HMC convention, `precond_state` is on the scale of
-    # Sigma^{1/2}, where Sigma=Cov(x_flat)
     def integrator(step_size, state, precond_state, n_steps):
         # jax.debug.print("start: step_size={s}, precond_state={d}", ordered=True, s=step_size, d=precond_state)
 
@@ -133,7 +146,7 @@ def gen_integrator(tempered_potential, initial_state):
         x_flat    = flatten_util.ravel_pytree(x)[0]
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
         # jax.debug.print("pre 1st momentum half-step: x={x}, x_flat={xf}, grad={g}, p_flat={v}", ordered=True, x=x, xf=x_flat, g=grad_flat, v=p_flat)
-        p_flat    = velocity_step(p_flat, step_size/2, precond_state, grad_flat)
+        p_flat    = velocity_step(p_flat, step_size/2, grad_flat)
         # jax.debug.print("post: p_flat={v}", ordered=True, v=p_flat)
 
         # loop full position and velocity leapfrog steps
@@ -150,7 +163,7 @@ def gen_integrator(tempered_potential, initial_state):
         # final full position step plus half velocity step
         x_flat    = position_step(x_flat, step_size, precond_state, p_flat)
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
-        p_flat    = velocity_step(p_flat, step_size/2, precond_state, grad_flat)
+        p_flat    = velocity_step(p_flat, step_size/2, grad_flat)
         
         # unravel, update state, and return it
         x_new = unravel_fn(x_flat)

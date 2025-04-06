@@ -24,20 +24,18 @@ class TestPreconditioning(unittest.TestCase):
         precs = (
             preconditioning.IdentityDiagonalPreconditioner(),
             preconditioning.FixedDiagonalPreconditioner(),
-            preconditioning.MixDiagonalPreconditioner(),
             preconditioning.FixedDensePreconditioner(),
-            preconditioning.MixDensePreconditioner()
         )
         for p in precs:
             with self.subTest(prec_class=type(p)):
                 kernel = AutoMALA(potential_fn = pot_fn, preconditioner = p)
                 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep, progress_bar=False)
-                mcmc.run(random.key(2349895454), init_params=init_vals)            
+                mcmc.run(random.key(2349895454), init_params=init_vals)
                 min_ess = testutils.extremal_diagnostics(mcmc)[1]
                 print(f"{type(p)}: min_ess={min_ess}")
                 self.assertGreater(min_ess, 77) # >200 locally but on CI-macos-latest FixedDense fails (~77)
+                last_round_used_var = mcmc.last_state.base_precond_state.var
                 if preconditioning.is_dense(p):
-                    last_round_used_var = mcmc.last_state.sqrt_var @ mcmc.last_state.sqrt_var.T
                     last_round_estimate_var = mcmc.last_state.stats.adapt_stats.vars_flat
                     self.assertTrue(jnp.allclose(S, last_round_used_var, atol=0.25))
                     self.assertTrue(jnp.allclose(S, last_round_estimate_var, atol=0.15))
@@ -46,7 +44,6 @@ class TestPreconditioning(unittest.TestCase):
                     last_round_estimate_var = mcmc.last_state.stats.adapt_stats.vars_flat
                     self.assertTrue(jnp.allclose(diag_S, last_round_estimate_var, atol=0.15))
                     if not isinstance(p, preconditioning.IdentityDiagonalPreconditioner):
-                        last_round_used_var = mcmc.last_state.sqrt_var * mcmc.last_state.sqrt_var
                         self.assertTrue(jnp.allclose(diag_S, last_round_used_var, atol=0.15))
 
 if __name__ == '__main__':

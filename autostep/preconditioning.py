@@ -5,71 +5,6 @@ from collections import namedtuple
 import jax
 from jax import lax
 from jax import numpy as jnp
-from jax import random
-
-from numpyro import util
-
-###############################################################################
-# type definitions
-###############################################################################
-
-class Preconditioner(ABC):
-
-    @staticmethod
-    @abstractmethod
-    def maybe_alter_precond_state(precond_state, rng_key):
-        """
-        Build a (possible randomized) preconditioner.
-
-        :param precond_state: An array representing the square-root of a covariance matrix.
-            It can be a matrix---for dense preconditioners---or a vector---for
-            the diagonal case.
-        :param rng_key: A PRNG key that could be used for random preconditioning.
-        :return: A vector representing a diagonal preconditioner.
-        """
-        raise NotImplementedError
-
-#######################################
-# Diagonal
-#######################################
-
-class IdentityDiagonalPreconditioner(Preconditioner):
-
-    @staticmethod
-    def maybe_alter_precond_state(precond_state, rng_key):
-        return jnp.ones_like(precond_state)
-
-class FixedDiagonalPreconditioner(Preconditioner):
-
-    @staticmethod
-    def maybe_alter_precond_state(precond_state, rng_key):
-        return precond_state
-
-# class MixDiagonalPreconditioner(Preconditioner):
-
-#     @staticmethod
-#     def maybe_alter_precond_state(precond_state, rng_key):
-#         raise(NotImplementedError("TODO: IMPLEMENT CORRECTLY"))
-#         assert jnp.ndim(precond_state) == 1
-
-#         # uniform mixture in log space
-#         # p = exp(U*log(hat_sd) + (1-U)log(1)) = exp(log(hat_sd^U))) = hat_sd^U
-#         return precond_state ** random.uniform(rng_key)
-
-#######################################
-# Dense
-#######################################
-
-class FixedDensePreconditioner(Preconditioner):
-
-    @staticmethod
-    def maybe_alter_precond_state(precond_state, rng_key):
-        return precond_state
-
-def is_dense(preconditioner):
-    return (
-        isinstance(preconditioner, FixedDensePreconditioner)
-    )
 
 ###############################################################################
 # Preconditioner state
@@ -132,6 +67,62 @@ preconditioner. It consists of the fields:
  - **inv_var_triu_factor** - A triu matrix `U` such that `inv(var)=U @ U.T`
 """
 
+###############################################################################
+# type definitions
+###############################################################################
+
+class Preconditioner(ABC):
+
+    @staticmethod
+    @abstractmethod
+    def maybe_alter_precond_state(precond_state, rng_key):
+        """
+        Build a (possible randomized) preconditioner.
+
+        :param precond_state: An array representing the square-root of a covariance matrix.
+            It can be a matrix---for dense preconditioners---or a vector---for
+            the diagonal case.
+        :param rng_key: A PRNG key that could be used for random preconditioning.
+        :return: A vector representing a diagonal preconditioner.
+        """
+        raise NotImplementedError
+
+#######################################
+# Diagonal
+#######################################
+
+class IdentityDiagonalPreconditioner(Preconditioner):
+
+    @staticmethod
+    def maybe_alter_precond_state(precond_state, rng_key):
+        I = jnp.ones_like(precond_state.var)
+        return PreconditionerState(I, I, I)
+
+class FixedDiagonalPreconditioner(Preconditioner):
+
+    @staticmethod
+    def maybe_alter_precond_state(precond_state, rng_key):
+        return precond_state
+
+#######################################
+# Dense
+#######################################
+
+class FixedDensePreconditioner(Preconditioner):
+
+    @staticmethod
+    def maybe_alter_precond_state(precond_state, rng_key):
+        return precond_state
+
+def is_dense(preconditioner):
+    return (
+        isinstance(preconditioner, FixedDensePreconditioner)
+    )
+
+###############################################################################
+# methods
+###############################################################################
+
 # initialization
 def init_base_precond_state(sample_field_flat_shape, preconditioner):
     if is_dense(preconditioner):
@@ -146,6 +137,7 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
             jnp.ones(sample_field_flat_shape),
             jnp.ones(sample_field_flat_shape)
         )
+
 
 # adapt the base preconditioner state, regularizing to avoid issues with 
 # ill-conditioned sample variances
