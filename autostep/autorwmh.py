@@ -43,12 +43,15 @@ class AutoRWMH(autostep.AutoStep):
         v_flat = random.normal(v_key, jnp.shape(state.v_flat))
         return state._replace(v_flat = v_flat, rng_key = rng_key)
     
-    def involution_main(self, step_size, state, precond_array):
+    def involution_main(self, step_size, state, precond_state):
         x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)
-        prec_v_flat = utils.apply_precond(precond_array, state.v_flat)
+        if jnp.ndim(precond_state.var_chol_tril) == 2:
+            prec_v_flat = precond_state.var_chol_tril @ state.v_flat
+        else:
+            prec_v_flat = precond_state.var_chol_tril * state.v_flat
         x_new = unravel_fn(x_flat + step_size * prec_v_flat)
         return state._replace(x = x_new)
     
-    def involution_aux(self, step_size, state, precond_array):
+    def involution_aux(self, step_size, state, precond_state):
         return state._replace(v_flat = -state.v_flat)
 

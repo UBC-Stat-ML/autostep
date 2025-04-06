@@ -33,7 +33,7 @@ class TestKernels(unittest.TestCase):
                     r = kernel_class(potential_fn=testutils.gaussian_potential)
                     s = r.init(rng_key, 0, random.normal(x_key, d), (), ())
                     s = s._replace(
-                        v_flat = random.normal(v_key, d),
+                        p_flat = random.normal(v_key, d),
                         base_step_size = random.exponential(step_key))
                     diag_precond = 0.1 * random.exponential(prec_key, d)
                     step_size = utils.step_size(s.base_step_size, -1)

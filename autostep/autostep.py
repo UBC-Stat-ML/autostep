@@ -13,19 +13,18 @@ from numpyro import util
 
 from autostep import utils
 from autostep import statistics
-from autostep import preconditioning
 from autostep import tempering
 
 AutoStepState = namedtuple(
     "AutoStepState",
     [
         "x",
-        "v_flat",
+        "p_flat",
         "log_joint",
         "rng_key",
         "stats",
         "base_step_size",
-        "sqrt_var",
+        "base_precond_state",
         "inv_temp"
     ],
 )
@@ -34,16 +33,14 @@ A :func:`~collections.namedtuple` defining the state of autoStep kernels.
 It consists of the fields:
 
  - **x** - the sample field.
- - **v_flat** - flattened velocity vector.
- - **log_joint** - joint log density of ``(x,v_flat)``.
+ - **p_flat** - flattened velocity vector.
+ - **log_joint** - joint log density of ``(x,p_flat)``.
  - **rng_key** - random number generator key.
  - **stats** - an ``AutoStepStats`` object.
  - **base_step_size** - the initial step size. Fixed within a round but updated
-   at the end of each adaptation round.
- - **sqrt_var** - the current best guess of the square-root of the (co)variance
-   of the flattened sample field. It can be either a vector (diagonal 
-   preconditioning) or a matrix (dense preconditioner). Fixed within a round 
-   but updated at the end of each adaptation round.
+   at the end of it.
+ - **base_precond_state** - an instance of ``PreconditionerState``. Fixed within a 
+   round but updated at the end of it.
  - **inv_temp**: optional inverse temperature parameter to target an annealed
    version of a model's distribution. 
 """
@@ -82,7 +79,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 sample_field_flat_shape, self.preconditioner
             ),
             jnp.array(init_base_step_size),
-            utils.init_sqrt_var(sample_field_flat_shape, self.preconditioner),
+            utils.init_base_precond_state(sample_field_flat_shape, self.preconditioner),
             init_inv_temp
         )
     
@@ -173,20 +170,20 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         
     # @staticmethod
     @abstractmethod
-    def involution_main(self, step_size, state, precond_array):
+    def involution_main(self, step_size, state, precond_state):
         """
         Apply the main part of the involution. This is usually the part that 
         modifies the variables of interests.
 
         :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
-        :param precond_array: A preconditioning array.
+        :param precond_state: A preconditioning array.
         :return: Updated state.
         """
         raise NotImplementedError
     
     @abstractmethod
-    def involution_aux(self, step_size, state, precond_array):
+    def involution_aux(self, step_size, state, precond_state):
         """
         Apply the auxiliary part of the involution. This is usually the part that
         is not necessary to implement for the respective involutive MCMC algorithm
@@ -195,7 +192,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
-        :param precond_array: A preconditioning array.
+        :param precond_state: A preconditioning array.
         :return: Updated state.
         """
         raise NotImplementedError
@@ -209,36 +206,36 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # build a (possibly randomized) preconditioner
         rng_key, precond_key, selector_key = random.split(state.rng_key, 3)
         state = state._replace(rng_key = rng_key) # always update the state with the modified key!
-        precond_array = self.preconditioner.build_precond(
-            state.sqrt_var, precond_key
+        precond_state = self.preconditioner.maybe_alter_precond_state(
+            state.base_precond_state, precond_key
         )
 
         # draw selector parameters
         selector_params = self.selector.draw_parameters(selector_key)
 
         # forward step size search
-        # jax.debug.print("fwd autostep: init_log_joint={i}, init_x={x}, init_v={v}", ordered=True, i=state.log_joint, x=state.x, v=state.v_flat)
+        # jax.debug.print("fwd autostep: init_log_joint={i}, init_x={x}, init_v={v}", ordered=True, i=state.log_joint, x=state.x, v=state.p_flat)
         state, fwd_exponent = self.auto_step_size(
-            state, selector_params, precond_array
+            state, selector_params, precond_state
         )
         fwd_step_size = utils.step_size(state.base_step_size, fwd_exponent)
         proposed_state = self.update_log_joint(
-            self.involution_main(fwd_step_size, state, precond_array)
+            self.involution_main(fwd_step_size, state, precond_state)
         )
         # jax.debug.print(
         #     "fwd done: step_size={s}, init_log_joint={l}, next_log_joint={ln}, log_joint_diff={ld}, prop_x={x}, prop_v={v}",
         #     ordered=True, s=fwd_step_size, l=state.log_joint, ln=proposed_state.log_joint, 
-        #     ld=proposed_state.log_joint-state.log_joint, x=proposed_state.x, v=proposed_state.v_flat)
+        #     ld=proposed_state.log_joint-state.log_joint, x=proposed_state.x, v=proposed_state.p_flat)
 
         # backward step size search
         # don't recompute log_joint for flipped state because we assume inv_aux 
         # leaves it invariant
         prop_state_flip = self.involution_aux(
-            fwd_step_size, proposed_state, precond_array
+            fwd_step_size, proposed_state, precond_state
         )
         # jax.debug.print("bwd begin", ordered=True)
         prop_state_flip, bwd_exponent = self.auto_step_size(
-            prop_state_flip, selector_params, precond_array
+            prop_state_flip, selector_params, precond_state
         )
         reversibility_passed = fwd_exponent == bwd_exponent
 
@@ -277,10 +274,10 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         return next_state
 
-    def auto_step_size(self, state, selector_params, precond_array):
+    def auto_step_size(self, state, selector_params, precond_state):
         init_log_joint = state.log_joint # Note: assumes the log joint value is up to date!
         next_state = self.update_log_joint(
-            self.involution_main(state.base_step_size, state, precond_array)
+            self.involution_main(state.base_step_size, state, precond_state)
         )
         next_log_joint = next_state.log_joint
         state = utils.copy_state_extras(next_state, state) # update state's stats and rng_key
@@ -290,12 +287,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         # initial state except for extra fields -- stats, rng_key -- which we
         # want to update
         state, shrink_exponent = self.shrink_step_size(
-            state, selector_params, next_log_joint, init_log_joint, precond_array
+            state, selector_params, next_log_joint, init_log_joint, precond_state
         )
 
         # try growing (no-op if selector decides not to grow)
         state, grow_exponent = self.grow_step_size(
-            state, selector_params, next_log_joint, init_log_joint, precond_array
+            state, selector_params, next_log_joint, init_log_joint, precond_state
         )
 
         # check only one route was taken
@@ -309,24 +306,24 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             selector_params, 
             next_log_joint, 
             init_log_joint, 
-            precond_array
+            precond_state
         ):
         exponent = 0
         state, exponent, *_ = lax.while_loop(
             self.shrink_step_size_cond_fun,
             self.shrink_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
-             selector_params, precond_array)
+             selector_params, precond_state)
         )
         return state, exponent
     
-    def grow_step_size(self, state, selector_params, next_log_joint, init_log_joint, precond_array):
+    def grow_step_size(self, state, selector_params, next_log_joint, init_log_joint, precond_state):
         exponent = 0        
         state, exponent, *_ = lax.while_loop(
             self.grow_step_size_cond_fun,
             self.grow_step_size_body_fun,
             (state, exponent, next_log_joint, init_log_joint, 
-             selector_params, precond_array)
+             selector_params, precond_state)
         )
 
         # deduct 1 step to avoid cliffs, but only if we actually entered the loop
@@ -337,7 +334,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         Round-based adaptation, as described in Biron-Lattes et al. (2024).
 
-        Currently, this updates `base_step_size` and `sqrt_var`.
+        Currently, this updates `base_step_size` and `base_precond_state`.
         At the end, it empties the `AutoStepAdaptStats` recorder.
 
         :param state: Current state.
@@ -346,29 +343,29 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         stats = state.stats
         round = utils.current_round(stats.n_samples)
-        new_base_step_size, new_sqrt_var, new_adapt_stats = lax.cond(
+        new_base_step_size, new_base_precond_state, new_adapt_stats = lax.cond(
             force or jnp.logical_and(
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
             partial(statistics.update_sampler_params, self.preconditioner),
             util.identity,
-            (state.base_step_size, state.sqrt_var, stats.adapt_stats)
+            (state.base_step_size, state.base_precond_state, stats.adapt_stats)
         )
         new_stats = stats._replace(adapt_stats = new_adapt_stats)
         state = state._replace(
             base_step_size = new_base_step_size, 
-            sqrt_var = new_sqrt_var,
+            base_precond_state = new_base_precond_state,
             stats = new_stats
         )
         # jax.debug.print(
         #     """
         #     n_samples={n}, round={r}, sample_idx={s},
-        #     base_step_size={b}, sqrt_var={e},
+        #     base_step_size={b}, base_precond_state={e},
         #     mean_step_size={ms}, mean_acc_prob={ma},
         #     means_flat={m}, vars_flat={v}""", ordered=True,
         #     n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
-        #     b=state.base_step_size, e=state.sqrt_var,
+        #     b=state.base_step_size, e=state.base_precond_state,
         #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
         #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
         return state
