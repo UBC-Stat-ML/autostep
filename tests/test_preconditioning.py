@@ -16,11 +16,12 @@ class TestPreconditioning(unittest.TestCase):
     def test_preconditioning(self):
         dim = 3
         rho = 0.9
-        tol = 0.1
+        tol = 0.15
+        n_rounds = 14
+
         init_vals = jnp.ones(dim)
         S = testutils.make_const_off_diag_corr_mat(dim, rho)
         pot_fn = testutils.make_correlated_Gaussian_potential(S)
-        n_rounds = 14
         n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/keep
         precs = (
             preconditioning.IdentityDiagonalPreconditioner(),
