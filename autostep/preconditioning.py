@@ -126,10 +126,9 @@ def is_dense(preconditioner):
 # initialization
 def init_base_precond_state(sample_field_flat_shape, preconditioner):
     if is_dense(preconditioner):
+        d = sample_field_flat_shape[0]
         return PreconditionerState(
-            jnp.identity(sample_field_flat_shape),
-            jnp.identity(sample_field_flat_shape),
-            jnp.identity(sample_field_flat_shape)
+            jnp.identity(d), jnp.identity(d), jnp.identity(d)
         )
     else: 
         return PreconditionerState(
@@ -143,10 +142,10 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
 # ill-conditioned sample variances
 # note: this is apparently the approach used in Stan, according to NumPyro
 # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
-def adapt_base_precond_state(preconditioner, vars_flat, n):
-    scaled_var = (n / (n + 5)) * vars_flat
+def adapt_base_precond_state(sample_var, n):
+    scaled_var = (n / (n + 5)) * sample_var
     eps = 1e-3 * (5 / (n + 5))
-    if is_dense(preconditioner):
+    if jnp.ndim(sample_var) == 2:
         I = jnp.identity(scaled_var.shape[0])
         var_chol_tril = lax.linalg.cholesky(scaled_var + eps*I)
         inv_var_triu_factor = jax.lax.linalg.triangular_solve(

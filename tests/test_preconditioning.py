@@ -36,12 +36,12 @@ class TestPreconditioning(unittest.TestCase):
                 self.assertGreater(min_ess, 77) # >200 locally but on CI-macos-latest FixedDense fails (~77)
                 last_round_used_var = mcmc.last_state.base_precond_state.var
                 if preconditioning.is_dense(p):
-                    last_round_estimate_var = mcmc.last_state.stats.adapt_stats.vars_flat
+                    last_round_estimate_var = mcmc.last_state.stats.adapt_stats.sample_var
                     self.assertTrue(jnp.allclose(S, last_round_used_var, atol=0.25))
                     self.assertTrue(jnp.allclose(S, last_round_estimate_var, atol=0.15))
                 else:
                     diag_S = jnp.diag(S)
-                    last_round_estimate_var = mcmc.last_state.stats.adapt_stats.vars_flat
+                    last_round_estimate_var = mcmc.last_state.stats.adapt_stats.sample_var
                     self.assertTrue(jnp.allclose(diag_S, last_round_estimate_var, atol=0.15))
                     if not isinstance(p, preconditioning.IdentityDiagonalPreconditioner):
                         self.assertTrue(jnp.allclose(diag_S, last_round_used_var, atol=0.15))

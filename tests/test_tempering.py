@@ -40,10 +40,10 @@ class TestTempering(unittest.TestCase):
                     mcmc.run(mcmc_key, *model_args, **model_kwargs)
                     adapt_stats=mcmc.last_state.stats.adapt_stats
                     self.assertTrue(
-                        jnp.allclose(adapt_stats.means_flat, true_mean, atol=0.3, rtol=0.1) # need atol to handle mean=0 for inv_temp=0
+                        jnp.allclose(adapt_stats.sample_mean, true_mean, atol=0.3, rtol=0.1) # need atol to handle mean=0 for inv_temp=0
                     )
                     self.assertTrue(
-                        jnp.allclose(adapt_stats.vars_flat, true_var, rtol=0.25)
+                        jnp.allclose(adapt_stats.sample_var, true_var, rtol=0.25)
                     )
 
 if __name__ == '__main__':

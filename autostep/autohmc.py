@@ -146,7 +146,7 @@ def gen_integrator(tempered_potential, initial_state):
         x_flat    = flatten_util.ravel_pytree(x)[0]
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
         # jax.debug.print("pre 1st momentum half-step: x={x}, x_flat={xf}, grad={g}, p_flat={v}", ordered=True, x=x, xf=x_flat, g=grad_flat, v=p_flat)
-        p_flat    = velocity_step(p_flat, step_size/2, grad_flat)
+        p_flat    = velocity_step(p_flat, 0.5*step_size, grad_flat)
         # jax.debug.print("post: p_flat={v}", ordered=True, v=p_flat)
 
         # loop full position and velocity leapfrog steps
@@ -163,7 +163,7 @@ def gen_integrator(tempered_potential, initial_state):
         # final full position step plus half velocity step
         x_flat    = position_step(x_flat, step_size, precond_state, p_flat)
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
-        p_flat    = velocity_step(p_flat, step_size/2, grad_flat)
+        p_flat    = velocity_step(p_flat, 0.5*step_size, grad_flat)
         
         # unravel, update state, and return it
         x_new = unravel_fn(x_flat)

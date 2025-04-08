@@ -357,7 +357,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
-            partial(statistics.update_sampler_params, self.preconditioner),
+            statistics.update_sampler_params,
             util.identity,
             (state.base_step_size, state.base_precond_state, stats.adapt_stats)
         )
@@ -372,9 +372,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         #     n_samples={n}, round={r}, sample_idx={s},
         #     base_step_size={b}, base_precond_state={e},
         #     mean_step_size={ms}, mean_acc_prob={ma},
-        #     means_flat={m}, vars_flat={v}""", ordered=True,
+        #     sample_mean={m}, sample_var={v}""", ordered=True,
         #     n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
         #     b=state.base_step_size, e=state.base_precond_state,
         #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
-        #     m=new_stats.adapt_stats.means_flat,v=new_stats.adapt_stats.vars_flat)
+        #     m=new_stats.adapt_stats.sample_mean,v=new_stats.adapt_stats.sample_var)
         return state
