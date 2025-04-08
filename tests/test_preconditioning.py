@@ -16,6 +16,7 @@ class TestPreconditioning(unittest.TestCase):
     def test_preconditioning(self):
         dim = 3
         rho = 0.9
+        tol = 0.1
         init_vals = jnp.ones(dim)
         S = testutils.make_const_off_diag_corr_mat(dim, rho)
         pot_fn = testutils.make_correlated_Gaussian_potential(S)
@@ -26,25 +27,30 @@ class TestPreconditioning(unittest.TestCase):
             preconditioning.FixedDiagonalPreconditioner(),
             preconditioning.FixedDensePreconditioner(),
         )
+        all_min_ess = []
         for p in precs:
             with self.subTest(prec_class=type(p)):
                 kernel = AutoMALA(potential_fn = pot_fn, preconditioner = p)
                 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep, progress_bar=False)
                 mcmc.run(random.key(2349895454), init_params=init_vals)
                 min_ess = testutils.extremal_diagnostics(mcmc)[1]
+                all_min_ess.append(min_ess)
                 print(f"{type(p)}: min_ess={min_ess}")
-                self.assertGreater(min_ess, 77) # >200 locally but on CI-macos-latest FixedDense fails (~77)
+                self.assertGreater(min_ess, 100)
                 last_round_used_var = mcmc.last_state.base_precond_state.var
                 if preconditioning.is_dense(p):
                     last_round_estimate_var = mcmc.last_state.stats.adapt_stats.sample_var
-                    self.assertTrue(jnp.allclose(S, last_round_used_var, atol=0.25))
-                    self.assertTrue(jnp.allclose(S, last_round_estimate_var, atol=0.15))
+                    self.assertTrue(jnp.allclose(S, last_round_used_var, rtol=tol))
+                    self.assertTrue(jnp.allclose(S, last_round_estimate_var, rtol=tol))
                 else:
                     diag_S = jnp.diag(S)
                     last_round_estimate_var = mcmc.last_state.stats.adapt_stats.sample_var
-                    self.assertTrue(jnp.allclose(diag_S, last_round_estimate_var, atol=0.15))
+                    self.assertTrue(jnp.allclose(diag_S, last_round_estimate_var, rtol=tol))
                     if not isinstance(p, preconditioning.IdentityDiagonalPreconditioner):
-                        self.assertTrue(jnp.allclose(diag_S, last_round_used_var, atol=0.15))
+                        self.assertTrue(jnp.allclose(diag_S, last_round_used_var, rtol=tol))
+
+        # check that Dense gives best performance
+        self.assertEqual(all_min_ess[-1], max(all_min_ess))
 
 if __name__ == '__main__':
     unittest.main()

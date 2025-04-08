@@ -16,29 +16,43 @@ class TestSelectors(unittest.TestCase):
         asym_sel = selectors.AsymmetricSelector()
         sym_sel = selectors.SymmetricSelector()
         fix_sel = selectors.FixedStepSizeSelector()
+        det_asym_sel = selectors.DeterministicAsymmetricSelector()
+        det_sym_sel = selectors.DeterministicSymmetricSelector()
         params = jnp.array([-1.5, -0.5])
 
         # sym and asym should give different decisions here
         log_diff = jnp.float32(0.8)
         self.assertTrue(asym_sel.should_grow(params, log_diff))
+        self.assertTrue(det_asym_sel.should_grow(params, log_diff))
         self.assertFalse(sym_sel.should_grow(params, log_diff))
+        self.assertFalse(det_sym_sel.should_grow(params, log_diff))
         self.assertFalse(fix_sel.should_grow(params, log_diff))
         self.assertFalse(asym_sel.should_shrink(params, log_diff))
+        self.assertFalse(det_asym_sel.should_shrink(params, log_diff))
         self.assertFalse(sym_sel.should_shrink(params, log_diff))
+        self.assertFalse(det_sym_sel.should_shrink(params, log_diff))
         self.assertFalse(fix_sel.should_shrink(params, log_diff))
 
         # sym and asym should agree in the following 2 cases
         log_diff = jnp.float32(-2)
         self.assertFalse(asym_sel.should_grow(params, log_diff))
+        self.assertFalse(det_asym_sel.should_grow(params, log_diff))
         self.assertFalse(sym_sel.should_grow(params, log_diff))
+        self.assertFalse(det_sym_sel.should_grow(params, log_diff))
         self.assertTrue(asym_sel.should_shrink(params, log_diff))
+        self.assertTrue(det_asym_sel.should_shrink(params, log_diff))
         self.assertTrue(sym_sel.should_shrink(params, log_diff))
+        self.assertTrue(det_sym_sel.should_shrink(params, log_diff))
 
         log_diff = jnp.float32(0)
         self.assertTrue(asym_sel.should_grow(params, log_diff))
+        self.assertTrue(det_asym_sel.should_grow(params, log_diff))
         self.assertTrue(sym_sel.should_grow(params, log_diff))
+        self.assertTrue(det_sym_sel.should_grow(params, log_diff))
         self.assertFalse(asym_sel.should_shrink(params, log_diff))
+        self.assertFalse(det_asym_sel.should_shrink(params, log_diff))
         self.assertFalse(sym_sel.should_shrink(params, log_diff))
+        self.assertFalse(det_sym_sel.should_shrink(params, log_diff))
 
     # fixed selector preserves the initial base step size
     def test_fixed_step_size_preserved(self):

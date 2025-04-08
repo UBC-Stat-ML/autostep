@@ -209,6 +209,13 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         precond_state = self.preconditioner.maybe_alter_precond_state(
             state.base_precond_state, precond_key
         )
+        # jax.debug.print(
+        #     "precond_state: var={v}   chol_tril={c}   inv_fac={i}", 
+        #     ordered=True, 
+        #     v=precond_state.var,
+        #     c=precond_state.var_chol_tril,
+        #     i=precond_state.inv_var_triu_factor
+        # )
 
         # refresh auxiliary variables (e.g., momentum), update the log joint 
         # density, and finally check if the latter is finite

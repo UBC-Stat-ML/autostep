@@ -147,12 +147,14 @@ def adapt_base_precond_state(sample_var, n):
     eps = 1e-3 * (5 / (n + 5))
     if jnp.ndim(sample_var) == 2:
         I = jnp.identity(scaled_var.shape[0])
-        var_chol_tril = lax.linalg.cholesky(scaled_var + eps*I)
+        var = scaled_var + eps*I
+        var_chol_tril = lax.linalg.cholesky(var)
         inv_var_triu_factor = jax.lax.linalg.triangular_solve(
             var_chol_tril.T, I
         )
     else:
-        var_chol_tril = lax.sqrt(scaled_var + eps)
+        var = scaled_var + eps
+        var_chol_tril = lax.sqrt(var)
         inv_var_triu_factor = jnp.reciprocal(var_chol_tril)
 
-    return PreconditionerState(scaled_var, var_chol_tril, inv_var_triu_factor)
+    return PreconditionerState(var, var_chol_tril, inv_var_triu_factor)
