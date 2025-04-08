@@ -8,7 +8,6 @@ from autostep import autostep
 from autostep import preconditioning
 from autostep import selectors
 from autostep import statistics
-from autostep.utils import std_normal_potential, apply_precond
 
 class AutoHMC(autostep.AutoStep):
 
@@ -18,9 +17,9 @@ class AutoHMC(autostep.AutoStep):
         potential_fn=None,
         tempered_potential = None,
         n_leapfrog_steps = 1,
-        init_base_step_size = 1.0,
+        init_base_step_size = 1e-5,
         selector = selectors.SymmetricSelector(),
-        preconditioner = preconditioning.MixDiagonalPreconditioner(),
+        preconditioner = preconditioning.FixedDiagonalPreconditioner(),
         init_inv_temp = None
     ):
         self._model = model
@@ -39,38 +38,86 @@ class AutoHMC(autostep.AutoStep):
         self.integrator = gen_integrator(self.tempered_potential, initial_state)
         return initial_state
     
-    def update_log_joint(self, state):
-        x, v_flat, *_ = state
+    def update_log_joint(self, state, precond_state):
+        x, p_flat, *_ = state
         new_temp_pot = self.tempered_potential(x, state.inv_temp)
-        new_log_joint = -new_temp_pot - std_normal_potential(v_flat)
+        Minv = precond_state.var
+        if jnp.ndim(precond_state.var) == 2:
+            Minv_p_flat = Minv @ p_flat                        
+        else:
+            Minv_p_flat = Minv * p_flat
+        new_kinetic_energy = 0.5*jnp.dot(Minv_p_flat, p_flat)
+        new_log_joint = -new_temp_pot - new_kinetic_energy
         new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
         return state._replace(log_joint = new_log_joint, stats = new_stats)
     
-    def refresh_aux_vars(self, state):
+    def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
-        v_flat = random.normal(v_key, jnp.shape(state.v_flat))
-        return state._replace(v_flat = v_flat, rng_key = rng_key)
+        v_flat = random.normal(v_key, jnp.shape(state.p_flat))
+        U = precond_state.inv_var_triu_factor
+        if jnp.ndim(U) == 2:
+            p_flat = U @ v_flat
+        else:
+            p_flat = U * v_flat
+        return state._replace(p_flat = p_flat, rng_key = rng_key)
     
-    def involution_main(self, step_size, state, precond_array):
+    def involution_main(self, step_size, state, precond_state):
         return self.integrator(
-            step_size, state, precond_array, self.n_leapfrog_steps
+            step_size, state, precond_state, self.n_leapfrog_steps
         )
     
-    def involution_aux(self, step_size, state, precond_array):
-        return state._replace(v_flat = -state.v_flat)
+    def involution_aux(self, step_size, state, precond_state):
+        return state._replace(p_flat = -state.p_flat)
 
 
-#######################################
+##############################################################################
 # leapfrog (velocity Verlet) integrator
-#######################################
+# The update is
+# 	p* = p  - (eps/2)grad(U)(x)
+# 	x' = x  + eps M^{-1}p*
+# 	p' = p* - (eps/2)grad(U)(x')
+# Let L lower triangular such that
+#   M = LL^T
+# If y ~ N(0,I), then
+#   p = Ly ~ N(0,M)
+# Working in this space requires
+#   - Getting L=chol(M) and M^{-1}= [L^{-1}]^T [L^{-1}]
+#   - At each step we need 3 matrix ops:
+#       1) Sampling p = Ly
+#       2) kinetic energy eval: [L^{-1}p]^T [L^{-1}p]
+#       3) For each leapfrog, a single matop (M^{-1}p)
+# The alternative is to work with y:=L^{-1}p, which gives the updates 
+# 	y* = y  - (eps/2)L^{-1}grad(U)(x)
+# 	x' = x  + eps (L^T)^{-1}y
+# 	y' = y* - (eps/2)L^{-1}grad(U)(x')
+# This means we need 
+#   - To get L^{-1} and (L^{-1})^T
+#   - No matrix ops outside leapfrog
+#   - ...but 3 O(d^2) ops for every LF step!
+# So this is too expensive.
+#
+# Note: when M = S^{-1}, with S=Cov(x). Clearly, M^{-1}=S. But also,
+#   S = LL^T <=> M = S^{-1} = (L^T)^{-1}L^{-1} = UU^T
+# where U := (L^T)^{-1}. This solve is O(d^2) because L^T is upper triangular,
+# which also means that U is also upper triangular. Then we have
+#   p = Uy ~ N(0,M)
+# Hence, we need S (no-op as this is directly estimated) and U.
+##############################################################################
 
-def velocity_step(v_flat, step_size, precond_array, grad_flat):
-    return v_flat - step_size * apply_precond(precond_array, grad_flat)
+def velocity_step(p_flat, step_size, grad_flat):
+    return p_flat - step_size * grad_flat
 
-def position_step(x_flat, step_size, precond_array, v_flat):
-    return x_flat + step_size * apply_precond(precond_array, v_flat)
+def position_step(x_flat, step_size, precond_state, p_flat):
+    if jnp.ndim(precond_state.var) == 2:
+        prec_p_flat = precond_state.var @ p_flat
+    else:
+        prec_p_flat = precond_state.var * p_flat
+    return x_flat + step_size * prec_p_flat
 
-# helper function to define the leapfrog integrator
+# leapfrog integrator using Neal (2011, Fig. 2) trick to use only 
+# (n_steps+1) grad evals
+# IMPORTANT: contrary to HMC convention, `precond_state` is on the scale of
+# Sigma^{1/2}, where Sigma=Cov(x_flat)
 def gen_integrator(tempered_potential, initial_state):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
 
@@ -85,47 +132,44 @@ def gen_integrator(tempered_potential, initial_state):
 
     # full position and velocity updates
     def integrator_scan_body_fn(carry, _):
-        x_flat, v_flat, step_size, precond_array, inv_temp = carry
-        x_flat    = position_step(x_flat, step_size, precond_array, v_flat)
+        x_flat, p_flat, step_size, precond_state, inv_temp = carry
+        x_flat    = position_step(x_flat, step_size, precond_state, p_flat)
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
-        v_flat    = velocity_step(v_flat, step_size, precond_array, grad_flat)
-        return (x_flat, v_flat, step_size, precond_array, inv_temp), None
+        p_flat    = velocity_step(p_flat, step_size, grad_flat)
+        return (x_flat, p_flat, step_size, precond_state, inv_temp), None
     
-    # leapfrog integrator using Neal (2011, Fig. 2) trick to use only 
-    # (n_steps+1) grad evals
-    # IMPORTANT: `precond_array` is on the scale of Sigma^{1/2}, where Sigma=Cov(x)
-    def integrator(step_size, state, precond_array, n_steps):
-        # jax.debug.print("start: step_size={s}, precond_array={d}", ordered=True, s=step_size, d=precond_array)
+    def integrator(step_size, state, precond_state, n_steps):
+        # jax.debug.print("start: step_size={s}, precond_state={d}", ordered=True, s=step_size, d=precond_state)
 
         # first velocity half-step
-        x, v_flat, *_, inv_temp = state
+        x, p_flat, *_, inv_temp = state
         x_flat    = flatten_util.ravel_pytree(x)[0]
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
-        # jax.debug.print("pre 1st momentum half-step: x={x}, x_flat={xf}, grad={g}, v_flat={v}", ordered=True, x=x, xf=x_flat, g=grad_flat, v=v_flat)
-        v_flat    = velocity_step(v_flat, step_size/2, precond_array, grad_flat)
-        # jax.debug.print("post: v_flat={v}", ordered=True, v=v_flat)
+        # jax.debug.print("pre 1st momentum half-step: x={x}, x_flat={xf}, grad={g}, p_flat={v}", ordered=True, x=x, xf=x_flat, g=grad_flat, v=p_flat)
+        p_flat    = velocity_step(p_flat, 0.5*step_size, grad_flat)
+        # jax.debug.print("post: p_flat={v}", ordered=True, v=p_flat)
 
         # loop full position and velocity leapfrog steps
         # note: slight modification from Neal's to avoid the "if" inside the loop
         # In particular, MALA (n_steps=1) doesn't enter the loop
-        x_flat, v_flat, *_ = lax.scan(
+        x_flat, p_flat, *_ = lax.scan(
             integrator_scan_body_fn,
-            (x_flat, v_flat, step_size, precond_array, inv_temp),
+            (x_flat, p_flat, step_size, precond_state, inv_temp),
             None,
             n_steps-1
         )[0]
-        # jax.debug.print("post loop: x_flat={xf}, v_flat={v}", ordered=True, xf=x_flat, v=v_flat)
+        # jax.debug.print("post loop: x_flat={xf}, p_flat={v}", ordered=True, xf=x_flat, v=p_flat)
 
         # final full position step plus half velocity step
-        x_flat    = position_step(x_flat, step_size, precond_array, v_flat)
+        x_flat    = position_step(x_flat, step_size, precond_state, p_flat)
         grad_flat = grad_flat_x_flat(x_flat, inv_temp)
-        v_flat    = velocity_step(v_flat, step_size/2, precond_array, grad_flat)
+        p_flat    = velocity_step(p_flat, 0.5*step_size, grad_flat)
         
         # unravel, update state, and return it
         x_new = unravel_fn(x_flat)
-        # jax.debug.print("final: x_new={x}, x_flat={xf}, grad={g}, v_flat={v}", ordered=True, x=x_new, xf=x_flat, g=grad_flat, v=v_flat)
+        # jax.debug.print("final: x_new={x}, x_flat={xf}, grad={g}, p_flat={v}", ordered=True, x=x_new, xf=x_flat, g=grad_flat, v=p_flat)
 
-        return state._replace(x = x_new, v_flat = v_flat)
+        return state._replace(x = x_new, p_flat = p_flat)
     
     return integrator
 

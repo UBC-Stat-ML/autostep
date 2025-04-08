@@ -22,9 +22,6 @@ def proto_checkified_is_zero(x):
 
 checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
 
-def std_normal_potential(v):
-    return (v*v).sum()/2
-
 def ceil_log2(x):
     """
     Ceiling of log2(x). Guaranteed to be an integer.
@@ -32,11 +29,11 @@ def ceil_log2(x):
     n_bits = jax.lax.clz(jnp.zeros_like(x))
     return n_bits - jax.lax.clz(x) - (jax.lax.population_count(x)==1)
 
-def apply_precond(precond_array, vec):
+def apply_precond(precond_state, vec):
     return (
-        precond_array * vec 
-        if jnp.ndim(precond_array) == 1 
-        else precond_array @ vec
+        precond_state * vec 
+        if jnp.ndim(precond_state) == 1 
+        else precond_state @ vec
     )
 
 def numerically_safe_diff(x0, x1):
@@ -99,12 +96,6 @@ def init_model(model, rng_key, model_args, model_kwargs):
     potential_fn = potential_fn_gen(*model_args, **model_kwargs)
     return init_params, potential_fn, postprocess_fn
 
-def init_sqrt_var(sample_field_flat_shape, preconditioner):
-    if is_dense(preconditioner):
-        return jnp.eye(*(2*sample_field_flat_shape))
-    else: 
-        return jnp.ones(sample_field_flat_shape)
-
 ###############################################################################
 # functions used withing lax.cond to create the output state for `sample`
 ###############################################################################
@@ -139,7 +130,7 @@ def gen_alter_step_size_cond_fun(pred_fun, max_n_iter):
             next_log_joint, 
             init_log_joint,
             selector_params, 
-            precond_array
+            precond_state
         ) = args
 
         # `numerically_safe_diff` is used to avoid corner cases where the step
@@ -163,12 +154,13 @@ def gen_alter_step_size_body_fun(kernel, direction):
             next_log_joint, 
             init_log_joint,
             selector_params, 
-            precond_array
+            precond_state
         ) = args
         exponent = exponent + direction
         eps = step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(
-            kernel.involution_main(eps, state, precond_array)
+            kernel.involution_main(eps, state, precond_state),
+            precond_state
         )
         next_log_joint = next_state.log_joint
         state = copy_state_extras(next_state, state)
@@ -195,7 +187,7 @@ def gen_alter_step_size_body_fun(kernel, direction):
             next_log_joint, 
             init_log_joint,
             selector_params, 
-            precond_array
+            precond_state
         )
 
     return alter_step_size_body_fun
