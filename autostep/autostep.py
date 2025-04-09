@@ -3,6 +3,7 @@ from collections import namedtuple
 from functools import partial
 
 import jax
+from jax.experimental import checkify
 from jax import flatten_util
 from jax import lax
 from jax import numpy as jnp
@@ -219,10 +220,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         # refresh auxiliary variables (e.g., momentum), update the log joint 
         # density, and finally check if the latter is finite
+        # Checker needs checkifying twice for some reason
         state = self.update_log_joint(
             self.refresh_aux_vars(state, precond_state), precond_state
         )
-        utils.checkified_is_finite(state.log_joint)
+        checkify.checkify(utils.checkified_is_finite)(state.log_joint)[0].throw()
 
         # draw selector parameters
         selector_params = self.selector.draw_parameters(selector_key)
@@ -312,7 +314,10 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
 
         # check only one route was taken
-        utils.checkified_is_zero(shrink_exponent * grow_exponent)
+        # Needs checkifying twice for some reason
+        checkify.checkify(utils.checkified_is_zero)(
+            shrink_exponent * grow_exponent
+        )[0].throw()
 
         return state, shrink_exponent + grow_exponent
     

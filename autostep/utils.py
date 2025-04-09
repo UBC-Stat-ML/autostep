@@ -10,17 +10,15 @@ from autostep.preconditioning import is_dense
 # basic utilities
 ###############################################################################
 
-def proto_checkified_is_finite(x):
+@checkify.checkify
+def checkified_is_finite(x):
   checkify.check(lax.is_finite(x), f"Found non-finite value x = {x}")
-  return
+  return True
 
-checkified_is_finite = checkify.checkify(proto_checkified_is_finite)
-
-def proto_checkified_is_zero(x):
+@checkify.checkify
+def checkified_is_zero(x):
   checkify.check(x==0, f"Expected zero but x = {x}")
-  return
-
-checkified_is_zero = checkify.checkify(proto_checkified_is_zero)
+  return True
 
 def ceil_log2(x):
     """
@@ -28,13 +26,6 @@ def ceil_log2(x):
     """
     n_bits = jax.lax.clz(jnp.zeros_like(x))
     return n_bits - jax.lax.clz(x) - (jax.lax.population_count(x)==1)
-
-def apply_precond(precond_state, vec):
-    return (
-        precond_state * vec 
-        if jnp.ndim(precond_state) == 1 
-        else precond_state @ vec
-    )
 
 def numerically_safe_diff(x0, x1):
     """

@@ -1,5 +1,4 @@
 import numpy
-import jax
 import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
