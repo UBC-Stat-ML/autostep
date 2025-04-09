@@ -40,29 +40,32 @@ n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/k
 kernel = AutoHMC(
     eight_schools,
     n_leapfrog_steps=32,
-    preconditioner = preconditioning.MixDensePreconditioner()
+    preconditioner = preconditioning.FixedDensePreconditioner()
 )
 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep)
 mcmc.run(random.key(9), sigma, y=y)
 mcmc.print_summary()
 ```
 ```
+sample: 100%|███| 32766/32766 [00:56<00:00, 577.20it/s, base_step_size 1.59e-01. mean_acc_prob=0.81]
+
                 mean       std    median      5.0%     95.0%     n_eff     r_hat
-        mu      4.57      3.19      4.52     -0.42     10.03    960.15      1.00
-       tau      3.63      3.43      2.68      0.02      8.06    453.54      1.00
-  theta[0]      6.52      5.61      5.80     -2.72     14.60   1082.41      1.00
-  theta[1]      5.13      4.62      4.89     -2.76     12.17   1440.08      1.00
-  theta[2]      4.03      5.31      4.30     -3.41     12.96   1352.01      1.00
-  theta[3]      5.02      4.73      4.86     -2.68     12.57   1561.84      1.00
-  theta[4]      3.76      4.70      4.03     -3.38     11.84   1335.61      1.00
-  theta[5]      4.23      4.72      4.39     -3.40     11.49   1364.35      1.00
-  theta[6]      6.55      5.03      5.95     -1.24     14.48   1019.30      1.00
-  theta[7]      5.14      5.48      4.90     -3.11     13.42   1334.00      1.00
+        mu      4.44      3.29      4.46     -0.93      9.91   8377.35      1.00
+       tau      3.71      3.34      2.84      0.02      8.09    451.99      1.00
+  theta[0]      6.31      5.66      5.68     -3.13     14.37   3559.68      1.00
+  theta[1]      4.97      4.73      4.94     -2.51     12.62  10851.66      1.00
+  theta[2]      3.96      5.39      4.23     -4.20     12.80   8986.34      1.00
+  theta[3]      4.80      4.76      4.80     -3.03     12.16  10271.22      1.00
+  theta[4]      3.62      4.64      3.89     -3.77     11.00   6365.64      1.00
+  theta[5]      4.03      4.84      4.17     -3.62     12.08   9346.41      1.00
+  theta[6]      6.44      5.22      5.91     -1.97     14.45   3388.24      1.00
+  theta[7]      4.95      5.43      4.84     -3.48     13.50  11422.42      1.00
 ```
 
 ## TODO
 
 - autoHMC with randomized number of steps (RHMC)
+- Re-implement the `MixDiagonalPreconditioner` in the new framework
 
 ## References
 
