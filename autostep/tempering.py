@@ -82,10 +82,29 @@ def trace_from_unconst_samples(
     return trace(substituted_model).get_trace(*model_args, **model_kwargs)
 
 # tempered potential of a model
-def tempered_potential(model, model_args, model_kwargs, unconstrained_sample, inv_temp = None):
+def logprior_and_loglik(model, model_args, model_kwargs, unconstrained_sample):
     """
-    Build a tempered version of the potential function associated with the
-    posterior distribution of a numpyro model. Specifically,
+    Compute the log-prior and log-likelihood of a model at a specified
+    unconstrained sample.
+
+    :param model: A numpyro model.
+    :param model_args: Model arguments.
+    :param model_kwargs: Model keyword arguments.
+    :param unconstrained_sample: A sample from the model in unconstrained space.
+    :return: The log-prior and log-likelihood evaluated at the given sample.
+    """
+    model_trace = trace_from_unconst_samples(
+        model, 
+        model_args, 
+        model_kwargs,
+        unconstrained_sample
+    )
+    return (log_prior(model_trace), log_lik(model_trace))
+   
+# tempered potential of a model
+def tempered_potential_from_logprior_and_loglik(log_prior, log_lik, inv_temp):
+    """
+    Calculate a tempered potential. Specifically,
 
     .. code-block:: python
         tempered_potential(x) = -log(pi_beta(x))
@@ -98,27 +117,12 @@ def tempered_potential(model, model_args, model_kwargs, unconstrained_sample, in
     Hence, when `inv_temp=0`, the tempered model reduces to the prior, whereas
     for `inv_temp=1`, the original posterior distribution is recovered.
 
-    To achieve this, we first constrain the sample and then use it to update the 
-    model trace to match the sampled values. Then, we iterate the trace and
-    compute the logprior -- including any logabsdetjac terms due to change of
-    variables -- and loglikelihood. Finally, we return their tempered sum.
-
-    :param model: A numpyro model.
-    :param model_args: Model arguments.
-    :param model_kwargs: Model keyword arguments.
-    :param unconstrained_sample: A sample from the model in unconstrained space.
+    :param log_prior: Log-prior value.
+    :param log_lik: Log-likelihood value.
     :param inv_temp: An inverse temperature (non-negative number).
-    :return: The potential evaluated at the given sample.
+    :return: The tempered potential.
     """
-    model_trace = trace_from_unconst_samples(
-        model, 
-        model_args, 
-        model_kwargs,
-        unconstrained_sample
-    )
     if inv_temp is None:
-        # default to full log joint
-        return -(log_prior(model_trace) + log_lik(model_trace))
+        return -(log_prior + log_lik) # default to log posterior
     else:
-        return -(log_prior(model_trace) + inv_temp*log_lik(model_trace))
-   
+        return -(log_prior + inv_temp*log_lik)
