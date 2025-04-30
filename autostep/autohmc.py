@@ -7,7 +7,7 @@ from jax import random
 from autostep import autostep
 from autostep import preconditioning
 from autostep import selectors
-from autostep import statistics
+from autostep import tempering
 
 class AutoHMC(autostep.AutoStep):
 
@@ -15,7 +15,7 @@ class AutoHMC(autostep.AutoStep):
         self,
         model=None,
         potential_fn=None,
-        tempered_potential = None,
+        logprior_and_loglik = None,
         n_leapfrog_steps = 1,
         init_base_step_size = 1e-5,
         selector = selectors.SymmetricSelector(),
@@ -24,7 +24,7 @@ class AutoHMC(autostep.AutoStep):
     ):
         self._model = model
         self._potential_fn = potential_fn
-        self.tempered_potential = tempered_potential
+        self.logprior_and_loglik = logprior_and_loglik
         self._postprocess_fn = None
         self.n_leapfrog_steps = n_leapfrog_steps
         self.init_base_step_size = init_base_step_size
@@ -35,21 +35,21 @@ class AutoHMC(autostep.AutoStep):
         )
     
     def init_extras(self, initial_state):
-        self.integrator = gen_integrator(self.tempered_potential, initial_state)
+        self.integrator = gen_integrator(self.logprior_and_loglik, initial_state)
         return initial_state
     
-    def update_log_joint(self, state, precond_state):
-        x, p_flat, *_ = state
-        new_temp_pot = self.tempered_potential(x, state.inv_temp)
+    def kinetic_energy(self, state, precond_state):
+        # compute kinetic energy
+        # autoHMC works in "momentum" convention -- i.e., p_flat ~ N(0,M) -- as
+        # opposed to the "velocity" convention used by autoRWMH.
+        # This is to minimize the number of matrix operations per leapfrog step.
+        p_flat = state.p_flat
         Minv = precond_state.var
         if jnp.ndim(precond_state.var) == 2:
             Minv_p_flat = Minv @ p_flat                        
         else:
             Minv_p_flat = Minv * p_flat
-        new_kinetic_energy = 0.5*jnp.dot(Minv_p_flat, p_flat)
-        new_log_joint = -new_temp_pot - new_kinetic_energy
-        new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
-        return state._replace(log_joint = new_log_joint, stats = new_stats)
+        return 0.5*jnp.dot(Minv_p_flat, p_flat)
     
     def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
@@ -118,12 +118,21 @@ def position_step(x_flat, step_size, precond_state, p_flat):
 # (n_steps+1) grad evals
 # IMPORTANT: contrary to HMC convention, `precond_state` is on the scale of
 # Sigma^{1/2}, where Sigma=Cov(x_flat)
-def gen_integrator(tempered_potential, initial_state):
+def gen_integrator(logprior_and_loglik, initial_state):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
+
+    def tempered_potential(unconstrained_sample, inv_temp):
+        """
+        Tempered potential evaluated at an unconstrained state.
+        """
+        return tempering.tempered_potential_from_logprior_and_loglik(
+            *logprior_and_loglik(unconstrained_sample), inv_temp
+        )
 
     def grad_flat_x_flat(x_flat, inv_temp):
         """
-        Flattened gradient of the potential evaluated at a flattened state.
+        Flattened gradient of the potential evaluated at a flattened 
+        unconstrained state.
         """
         return flatten_util.ravel_pytree(
             # note: by default, `grad` takes gradient w.r.t. the first arg only

@@ -5,8 +5,6 @@ from jax import random
 from autostep import autostep
 from autostep import preconditioning
 from autostep import selectors
-from autostep import statistics
-from autostep import utils
 
 class AutoRWMH(autostep.AutoStep):
 
@@ -14,7 +12,7 @@ class AutoRWMH(autostep.AutoStep):
         self,
         model=None,
         potential_fn=None,
-        tempered_potential = None,
+        logprior_and_loglik = None,
         init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.FixedDiagonalPreconditioner(),
@@ -22,7 +20,7 @@ class AutoRWMH(autostep.AutoStep):
     ):
         self._model = model
         self._potential_fn = potential_fn
-        self.tempered_potential = tempered_potential
+        self.logprior_and_loglik = logprior_and_loglik
         self._postprocess_fn = None
         self.init_base_step_size = init_base_step_size
         self.selector = selector
@@ -30,14 +28,7 @@ class AutoRWMH(autostep.AutoStep):
         self.init_inv_temp = (
             None if init_inv_temp is None else jnp.array(init_inv_temp)
         )
-
-    def update_log_joint(self, state, precond_state):
-        x, p_flat, *_ = state
-        new_temp_pot = self.tempered_potential(x, state.inv_temp)
-        new_log_joint = -new_temp_pot - 0.5*jnp.dot(p_flat, p_flat)
-        new_stats = statistics.increase_n_pot_evals_by_one(state.stats)
-        return state._replace(log_joint = new_log_joint, stats = new_stats)
-    
+   
     def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
         p_flat = random.normal(v_key, jnp.shape(state.p_flat))

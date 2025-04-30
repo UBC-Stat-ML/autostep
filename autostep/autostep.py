@@ -22,6 +22,8 @@ AutoStepState = namedtuple(
     [
         "x",
         "p_flat",
+        "log_lik",
+        "log_posterior",
         "log_joint",
         "rng_key",
         "stats",
@@ -34,9 +36,14 @@ AutoStepState = namedtuple(
 A :func:`~collections.namedtuple` defining the state of autoStep kernels.
 It consists of the fields:
 
- - **x** - the sample field.
- - **p_flat** - flattened velocity vector.
- - **log_joint** - joint log density of ``(x,p_flat)``.
+ - **x** - the sample field, corresponding to a pytree representing a value in
+   unconstrained space.
+ - **p_flat** - flattened momentum/velocity vector.
+ - **log_lik** - log-likelihood of ``x``.
+ - **log_posterior** - log-posterior of ``x``. The log-prior part includes 
+   possible log-abs-det-jac values associated with transformations to 
+   unconstrained space.
+ - **log_joint** - log-posterior plus kinetic energy of ``p_flat``.
  - **rng_key** - random number generator key.
  - **stats** - an ``AutoStepStats`` object.
  - **base_step_size** - the initial step size. Fixed within a round but updated
@@ -44,7 +51,7 @@ It consists of the fields:
  - **base_precond_state** - an instance of ``PreconditionerState``. Fixed within a 
    round but updated at the end of it.
  - **inv_temp**: optional inverse temperature parameter to target an annealed
-   version of a model's distribution. 
+   version of a model's distribution.
 """
 
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
@@ -75,6 +82,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return AutoStepState(
             initial_params,
             jnp.zeros(sample_field_flat_shape),
+            jnp.array(0.), # Note: not the actual loglik; needs to be updated 
+            jnp.array(0.), # Note: not the actual logposterior; needs to be updated 
             jnp.array(0.), # Note: not the actual log joint value; needs to be updated 
             rng_key,
             statistics.make_stats_recorder(
@@ -102,23 +111,29 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         self.init_alter_step_size_loop_funs()
 
         # initialize model if it exists, and if so, use it to get initial parameters
-        if self._model is not None:
-            rng_key, rng_key_init = random.split(rng_key)
-            new_params, self._potential_fn, self._postprocess_fn = utils.init_model(
-                self._model, rng_key_init, model_args, model_kwargs
-            )
-            if initial_params is None:
-                initial_params = new_params
-            
-            # initialize the tempered potential function
-            self.tempered_potential = partial(
-                tempering.tempered_potential, 
-                self._model, 
-                model_args, 
-                model_kwargs
-            )
-        elif self.tempered_potential is None:
-            self.tempered_potential = lambda x,_: self._potential_fn(x)
+        if self.logprior_and_loglik is None:
+            if self._model is not None:
+                rng_key, rng_key_init = random.split(rng_key)
+                new_params, self._potential_fn, self._postprocess_fn = utils.init_model(
+                    self._model, rng_key_init, model_args, model_kwargs
+                )
+                if initial_params is None:
+                    initial_params = new_params
+                
+                # initialize the logprior_and_loglik function
+                self.logprior_and_loglik = partial(
+                    tempering.logprior_and_loglik, 
+                    self._model, 
+                    model_args, 
+                    model_kwargs
+                )
+            elif self._potential_fn is not None:
+                self.logprior_and_loglik = lambda x: (-self._potential_fn(x), 0.)
+            else:
+                raise(ValueError(
+                    "You need to provide a model, a logprior_and_loglik, or a " \
+                    "potential function"
+                ))
 
         # initialize the state of the autostep sampler
         initial_state = self.init_state(
@@ -151,16 +166,42 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             return util.identity
         return self._postprocess_fn(*model_args, **model_kwargs)
     
-    @abstractmethod
-    def update_log_joint(self, state, precond_state):
+    def kinetic_energy(self, state, precond_state):
         """
-        Compute the log joint density for all variables, i.e., including auxiliary.
+        Computes the potential energy for any augmented variables whose density
+        is not invariant to the involution. The default implementation assumes
+        that the distribution of all auxiliary variables is invariant under the
+        involution (this is true for autoRWMH, for example).
 
         :param state: Current state.
-        :param precond_state: Preconditioner value.
+        :param precond_state: Preconditioner state.
+        :return: Kinetic energy.
+        """
+        return jnp.zeros_like(state.p_flat[0])
+
+    def update_log_joint(self, state, precond_state):
+        """
+        Update the log-likelihood, log-posterior, and log-joint.
+
+        :param state: Current state.
+        :param precond_state: Preconditioner state.
         :return: Updated state.
         """
-        raise NotImplementedError
+        # get new kinetic energy
+        new_kinetic_energy = self.kinetic_energy(state, precond_state)
+
+        # get logprior, loglik and tempered potential
+        new_log_prior, new_log_lik = self.logprior_and_loglik(state.x)
+        new_temp_pot = tempering.tempered_potential_from_logprior_and_loglik(
+            new_log_prior, new_log_lik, state.inv_temp
+        )
+        
+        # replace state with updated values and return
+        return state._replace(
+            log_lik = new_log_lik,
+            log_posterior = new_log_prior + new_log_lik,
+            log_joint = -(new_temp_pot + new_kinetic_energy)
+        )
 
     @abstractmethod
     def refresh_aux_vars(self, rng_key, state, precond_state):
@@ -169,12 +210,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         :param rng_key: Random number generator key.
         :param state: Current state.
-        :param precond_state: Preconditioner value.
+        :param precond_state: Preconditioner state.
         :return: State with updated auxiliary variables.
         """
         raise NotImplementedError
         
-    # @staticmethod
     @abstractmethod
     def involution_main(self, step_size, state, precond_state):
         """
@@ -183,7 +223,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
-        :param precond_state: A preconditioning array.
+        :param precond_state: Preconditioner state.
         :return: Updated state.
         """
         raise NotImplementedError
@@ -198,7 +238,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
         :param step_size: Step size to use in the involutive transformation.
         :param state: Current state.
-        :param precond_state: A preconditioning array.
+        :param precond_state: Preconditioner state.
         :return: Updated state.
         """
         raise NotImplementedError

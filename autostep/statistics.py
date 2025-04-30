@@ -52,16 +52,14 @@ def empty_adapt_stats_recorder(adapt_stats):
 AutoStepStats = namedtuple(
     "AutoStepStats",
     [
-        "n_pot_evals",
         "n_samples",
         "adapt_stats"
     ],
-    defaults=(0, 0, AutoStepAdaptStats())
+    defaults=(0, AutoStepAdaptStats())
 )
 """
 A :func:`~collections.namedtuple` consisting of the following fields:
 
- - **n_pot_evals** - total number of potential evaluations (including warmup).
  - **n_samples** - total number of calls to ``sample`` so far. At the end of
    a run, this should be equal to `num_warmup+num_samples`.
  - **adapt_stats** - an ``AutoStepAdaptStats`` namedtuple which contains adaptation
@@ -75,18 +73,15 @@ def make_stats_recorder(sample_field_flat_shape, preconditioner):
         )
     )
 
-def increase_n_pot_evals_by_one(stats):
-    return stats._replace(n_pot_evals = stats.n_pot_evals + 1)
-
 # update sample statistics
 # use the "tracking-error" formula for updating means, based on the identity
 #     m_n+1 = (n*m_n + x_{n+1}) / (n+1) = ((n+1)*m_n + (x_{n+1}-m_n)) / (n+1) 
 #           = m_n + (x_{n+1}-m_n)/(n+1)
-# use Welford's_online_algorithm to update variances
-#     v_n+1 = [n*v_n + (x_n+1 - m_n+1)(x_n+1 - m_n)]/(n+1)
+# use Welford's_online_algorithm to update covariance matrices
+#     v_n+1 = [n*v_n + (x_n+1 - m_n+1)(x_n+1 - m_n)^T]/(n+1)
 def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
     # update whole-run statistics
-    n_pot_evals, n_samples, adapt_stats = stats
+    n_samples, adapt_stats = stats
     n_samples = n_samples + 1
 
     # update round statistics
@@ -98,7 +93,6 @@ def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
     dvars = delta_vars(sample_var, x_flat - sample_mean, x_flat - new_sample_mean)
     new_sample_var = ((sample_idx-1)*sample_var + dvars) / sample_idx
     return AutoStepStats(
-        n_pot_evals, 
         n_samples, 
         AutoStepAdaptStats(
             sample_idx, 
