@@ -3,7 +3,10 @@ from tests import utils as testutils
 from functools import partial
 import unittest
 
+from scipy import stats
+
 import jax
+from jax import lax
 from jax import random
 from jax import numpy as jnp
 
@@ -23,6 +26,43 @@ def rand_sample_var(rng_key, var_shape):
     else:
         return N * N
 
+# sequentially sample multiple times, discard intermediate states
+def loop_sample(kernel, n_refresh, kernel_state):
+    return lax.scan(
+        lambda state, _: (kernel.sample(state,(),{}), None),
+        kernel_state,
+        length=n_refresh
+    )[0]
+
+# run MCMC on an isotropic multivariate normal starting from the stationary dist
+# collect only the last state, and only its first coordinate
+def run_and_collect_last_sample(
+        kernel, 
+        dim, 
+        true_mean, 
+        true_sd, 
+        n_warmup,
+        n_refresh, 
+        rng_key
+    ):
+    run_key, init_key = random.split(rng_key)
+
+    # draw an iid sample from the target
+    init_val = true_mean + true_sd*random.normal(init_key, dim)
+
+    # initialize a kernel state with warmup to tune parameters
+    # note: num_samples = 0 fails.
+    mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=1, progress_bar=False)
+    mcmc.run(run_key, init_params=init_val)
+    kernel_state = mcmc.last_state
+
+    # reset the initial state to the sample from the target 
+    kernel_state = kernel_state._replace(x=init_val)
+
+    # run
+    kernel_state = loop_sample(kernel, n_refresh, kernel_state)
+    return kernel_state.x[0]
+
 class TestKernels(unittest.TestCase):
 
     TESTED_KERNELS = (
@@ -35,6 +75,11 @@ class TestKernels(unittest.TestCase):
         preconditioning.IdentityDiagonalPreconditioner(),
         preconditioning.FixedDiagonalPreconditioner(),
         preconditioning.FixedDensePreconditioner()
+    )
+
+    TESTED_SELECTORS = (
+        # no guarantee that other selectors produce good samples
+        selectors.AsymmetricSelector(), selectors.SymmetricSelector()
     )
     
     def test_involution(self):
@@ -94,10 +139,7 @@ class TestKernels(unittest.TestCase):
         n_warmup, n_keep = utils.split_n_rounds(n_rounds)
         tol = 0.15
         for kernel_class in self.TESTED_KERNELS:
-            for sel in (
-                # no guarantee that other selectors produce good samples
-                selectors.AsymmetricSelector(), selectors.SymmetricSelector()
-                ):
+            for sel in self.TESTED_SELECTORS:
                 with self.subTest(kernel_class=kernel_class, sel_type=type(sel)):
                     print(f"kernel_class={kernel_class}, sel_type={type(sel)}")
                     rng_key, run_key = random.split(rng_key)
@@ -123,6 +165,46 @@ class TestKernels(unittest.TestCase):
                         jnp.allclose(adapt_stats.sample_var, true_var, rtol=tol),
                         msg=f"sample_var={adapt_stats.sample_var} but true_var={true_var}"
                     )
+    
+    # invariance test on an isotropic multivariate normal
+    def test_invariance(self):
+        dim = 4
+        true_mean = 2.
+        true_var = 0.5
+        true_sd = jnp.sqrt(true_var)
+        true_cdf = partial(stats.norm.cdf, loc=true_mean, scale=true_sd)
+        n_warmup = utils.split_n_rounds(10)[0]
+        n_refresh = 1024
+        n_samples = 1024
+        pval_threshold = 0.01
+        rng_key = random.key(2)
+        
+        for kernel_class in self.TESTED_KERNELS:
+            for prec in self.TESTED_PRECONDITIONERS:
+                for sel in self.TESTED_SELECTORS:
+                    with self.subTest(kernel_class=kernel_class, prec_type=type(prec), sel_type=type(sel)):
+                        print(f"kernel_class={kernel_class}, prec_type={type(prec)}, sel_type={type(sel)}")
+                        rng_key, exp_key = random.split(rng_key)
+                        kernel = kernel_class(
+                            potential_fn=testutils.gaussian_potential, 
+                            selector=sel,
+                            preconditioner = prec
+                        )
+                        vmap_fn = jax.vmap(
+                            partial(
+                                run_and_collect_last_sample, 
+                                kernel, 
+                                dim, 
+                                true_mean, 
+                                true_sd, 
+                                n_warmup, 
+                                n_refresh
+                            )
+                        )
+                        run_keys = random.split(exp_key, n_samples)
+                        mcmc_samples = vmap_fn(run_keys)
+                        ks_res = stats.ks_1samp(mcmc_samples, true_cdf)
+                        self.assertGreater(ks_res.pvalue, pval_threshold)
 
     def test_numpyro_model(self):
         n_rounds = 10

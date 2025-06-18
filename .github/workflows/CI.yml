@@ -75,7 +75,7 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          python -m coverage run -m unittest
+          python -m coverage run -m unittest -v
           python -m coverage xml
       - name: Upload coverage
         uses: codecov/codecov-action@v5
