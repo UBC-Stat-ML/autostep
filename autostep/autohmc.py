@@ -17,7 +17,7 @@ class AutoHMC(autostep.AutoStep):
         potential_fn=None,
         logprior_and_loglik = None,
         n_leapfrog_steps = 1,
-        init_base_step_size = 1e-5,
+        init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.FixedDiagonalPreconditioner(),
         init_inv_temp = None
