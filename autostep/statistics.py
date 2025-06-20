@@ -11,10 +11,11 @@ AutoStepAdaptStats = namedtuple(
         "sample_idx",
         "mean_step_size",
         "mean_acc_prob",
+        "rev_rate",
         "sample_mean",
         "sample_var"
     ],
-    defaults=(0, 0.0, 0.0, None, None)
+    defaults=(0, 0.0, 0.0, 0.0, None, None)
 )
 """
 A :func:`~collections.namedtuple` used for round-based adaptation. Its contents
@@ -23,6 +24,7 @@ are cleared at the end of each round. Its fields are:
  - **sample_idx** - current sample in the current round.
  - **mean_step_size** - online mean step size for the round.
  - **mean_acc_prob** - online mean acceptance probability for the round.
+ - **rev_rate** - online reversibility rate for the round.
  - **sample_mean** - online mean of the flattened sample field.
  - **sample_var** - online variance estimate of the flattened sample field.
 """
@@ -79,16 +81,17 @@ def make_stats_recorder(sample_field_flat_shape, preconditioner):
 #           = m_n + (x_{n+1}-m_n)/(n+1)
 # use Welford's_online_algorithm to update covariance matrices
 #     v_n+1 = [n*v_n + (x_n+1 - m_n+1)(x_n+1 - m_n)^T]/(n+1)
-def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
+def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, rev_pass, x_flat):
     # update whole-run statistics
     n_samples, adapt_stats = stats
     n_samples = n_samples + 1
 
     # update round statistics
-    sample_idx, mean_step_size, mean_acc_prob, sample_mean, sample_var = adapt_stats
+    sample_idx, mean_step_size, mean_acc_prob, rev_rate, sample_mean, sample_var = adapt_stats
     sample_idx = sample_idx + 1
     new_mean_step_size = mean_step_size + (avg_fwd_bwd_step_size-mean_step_size)/sample_idx
     new_mean_acc_prob = mean_acc_prob + (acc_prob-mean_acc_prob)/sample_idx
+    new_rev_rate = rev_rate + (rev_pass-rev_rate)/sample_idx
     new_sample_mean = sample_mean + (x_flat - sample_mean)/sample_idx
     dvars = delta_vars(sample_var, x_flat - sample_mean, x_flat - new_sample_mean)
     new_sample_var = ((sample_idx-1)*sample_var + dvars) / sample_idx
@@ -98,6 +101,7 @@ def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, x_flat):
             sample_idx, 
             new_mean_step_size, 
             new_mean_acc_prob, 
+            new_rev_rate,
             new_sample_mean,
             new_sample_var
         )

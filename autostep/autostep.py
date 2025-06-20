@@ -157,8 +157,10 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return self._model
     
     def get_diagnostics_str(self, state):
-        return "base_step_size {:.2e}. mean_acc_prob={:.2f}".format(
-            state.base_step_size, state.stats.adapt_stats.mean_acc_prob
+        return "base_step {:.2e}, rev_rate={:.2f}, acc_prob={:.2f}".format(
+            state.base_step_size,
+            state.stats.adapt_stats.rev_rate, 
+            state.stats.adapt_stats.mean_acc_prob
         )
 
     def postprocess_fn(self, model_args, model_kwargs):
@@ -321,7 +323,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         bwd_step_size = utils.step_size(state.base_step_size, bwd_exponent)
         avg_fwd_bwd_step_size = 0.5 * (fwd_step_size + bwd_step_size)
         new_stats = statistics.record_post_sample_stats(
-            next_state.stats, avg_fwd_bwd_step_size, acc_prob,
+            next_state.stats, avg_fwd_bwd_step_size, acc_prob, reversibility_passed,
             jax.flatten_util.ravel_pytree(getattr(next_state, self.sample_field))[0]
         )
         next_state = next_state._replace(stats = new_stats)
