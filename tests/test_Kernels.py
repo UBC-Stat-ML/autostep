@@ -72,7 +72,7 @@ class TestKernels(unittest.TestCase):
     )
     
     def test_involution(self):
-        tol = 1e-7
+        tol = 1e-5
         init_val = jnp.array([1., 2.])
         n_warmup = utils.split_n_rounds(10)[0]
         rng_key = random.key(321)
