@@ -118,13 +118,17 @@ def delta_vars(sample_var, dx1, dx2):
 ## See `adapt` method in AutoStep
 def update_sampler_params(args):
     *_, adapt_stats = args
+    n_samples_in_round = adapt_stats.sample_idx
 
     # set the average step size of the prev round as the new base step size
-    new_base_step_size = adapt_stats.mean_step_size
+    # use the same smoothing as for the preconditioner
+    new_base_step_size = (
+        5 + n_samples_in_round*adapt_stats.mean_step_size
+    ) / (5 + n_samples_in_round)
 
     # adapt the preconditioner
     new_base_precond_state = adapt_base_precond_state(
-        adapt_stats.sample_var, adapt_stats.sample_idx
+        adapt_stats.sample_var, n_samples_in_round
     )
 
     # empty the adapt recorder and return
