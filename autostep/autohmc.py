@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax
 from jax import flatten_util
 from jax import lax
@@ -20,7 +22,8 @@ class AutoHMC(autostep.AutoStep):
         init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.FixedDiagonalPreconditioner(),
-        init_inv_temp = None
+        init_inv_temp = None,
+        n_iter_opt_init_params = 0
     ):
         self._model = model
         self._potential_fn = potential_fn
@@ -33,7 +36,8 @@ class AutoHMC(autostep.AutoStep):
         self.init_inv_temp = (
             None if init_inv_temp is None else jnp.array(init_inv_temp)
         )
-    
+        self.n_iter_opt_init_params = n_iter_opt_init_params
+            
     def init_extras(self, initial_state):
         self.integrator = gen_integrator(self.logprior_and_loglik, initial_state)
         return initial_state
@@ -120,14 +124,9 @@ def position_step(x_flat, step_size, precond_state, p_flat):
 # Sigma^{1/2}, where Sigma=Cov(x_flat)
 def gen_integrator(logprior_and_loglik, initial_state):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
-
-    def tempered_potential(unconstrained_sample, inv_temp):
-        """
-        Tempered potential evaluated at an unconstrained state.
-        """
-        return tempering.tempered_potential_from_logprior_and_loglik(
-            *logprior_and_loglik(unconstrained_sample), inv_temp
-        )
+    tempered_potential = partial(
+        tempering.tempered_potential, logprior_and_loglik
+    )
 
     def grad_flat_x_flat(x_flat, inv_temp):
         """

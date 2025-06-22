@@ -12,6 +12,7 @@ from jax import random
 from numpyro import infer
 from numpyro import util
 
+from autostep import initialization
 from autostep import preconditioning
 from autostep import statistics
 from autostep import tempering
@@ -70,7 +71,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             self, 1
         )
     
-    def init_state(self, initial_params, rng_key, init_base_step_size, init_inv_temp):
+    def init_state(self, initial_params, rng_key):
         """
         Initialize the state of the sampler.
 
@@ -89,11 +90,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             statistics.make_stats_recorder(
                 sample_field_flat_shape, self.preconditioner
             ),
-            jnp.array(init_base_step_size),
+            jnp.array(self.init_base_step_size),
             preconditioning.init_base_precond_state(
                 sample_field_flat_shape, self.preconditioner
             ),
-            init_inv_temp
+            None if self.init_inv_temp is None else jnp.array(self.init_inv_temp)
         )
     
     def init_extras(self, state):
@@ -114,7 +115,11 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         if self.logprior_and_loglik is None:
             if self._model is not None:
                 rng_key, rng_key_init = random.split(rng_key)
-                new_params, self._potential_fn, self._postprocess_fn = utils.init_model(
+                (
+                    new_params, 
+                    self._potential_fn, 
+                    self._postprocess_fn
+                ) = initialization.init_model(
                     self._model, rng_key_init, model_args, model_kwargs
                 )
                 if initial_params is None:
@@ -122,7 +127,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 
                 # initialize the logprior_and_loglik function
                 self.logprior_and_loglik = partial(
-                    tempering.logprior_and_loglik, 
+                    tempering.model_logprior_and_loglik, 
                     self._model, 
                     model_args, 
                     model_kwargs
@@ -134,14 +139,18 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                     "You need to provide a model, a logprior_and_loglik, or a " \
                     "potential function"
                 ))
+        
+        # maybe optimize the initial parameters
+        if self.n_iter_opt_init_params > 0:
+            initial_params = initialization.optimize_init_params(
+                self.logprior_and_loglik, 
+                initial_params, 
+                self.init_inv_temp,
+                self.n_iter_opt_init_params
+            )
 
         # initialize the state of the autostep sampler
-        initial_state = self.init_state(
-            initial_params,
-            rng_key, 
-            self.init_base_step_size, 
-            self.init_inv_temp
-        )
+        initial_state = self.init_state(initial_params, rng_key)
 
         # carry out any other initialization required by an autoStep kernel
         initial_state = self.init_extras(initial_state)
@@ -411,7 +420,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 round <= self.adapt_rounds,              # are we still adapting?
                 stats.adapt_stats.sample_idx == 2**round # are we at the end of a round?
             ),
-            statistics.update_sampler_params,
+            partial(statistics.update_sampler_params, self.selector),
             util.identity,
             (state.base_step_size, state.base_precond_state, stats.adapt_stats)
         )

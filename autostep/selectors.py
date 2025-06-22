@@ -38,6 +38,12 @@ class StepSizeSelector(ABC):
         :return: `True` if step size should shrink; `False` otherwise.
         """
         raise NotImplementedError
+    
+    @staticmethod
+    # use smoothing similar to the one in `adapt_base_precond_state`
+    def adapt_base_step_size(base_step_size, mean_step_size, n_samples_in_round):
+        s = (5 + n_samples_in_round*mean_step_size) / (5 + n_samples_in_round)
+        return s
 
 
 def _draw_log_unif_bounds(rng_key):
@@ -157,4 +163,8 @@ class FixedStepSizeSelector(StepSizeSelector):
     @staticmethod
     def should_shrink(bounds, log_diff):
         return False
+    
+    @staticmethod
+    def adapt_base_step_size(base_step_size, mean_step_size, n_samples_in_round):
+        return base_step_size
 

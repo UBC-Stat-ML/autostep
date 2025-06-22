@@ -36,7 +36,7 @@ def numerically_safe_diff(x0, x1):
         lambda t: jnp.zeros_like(t[0]),
         lambda t: t[1]-t[0],
         (x0,x1)
-    ) 
+    )
 
 ###############################################################################
 # Rounds-based sampling arithmetic
@@ -62,30 +62,6 @@ def current_round(n_samples):
 
 def n_warmup_to_adapt_rounds(n_warmup):
     return ceil_log2(n_warmup + 2) - 1
-
-###############################################################################
-# kernel initialization
-###############################################################################
-
-# Taken without much changes from
-# https://github.com/pyro-ppl/numpyro/blob/master/numpyro/infer/barker.py
-def init_model(model, rng_key, model_args, model_kwargs):
-    (
-        params_info,
-        potential_fn_gen,
-        postprocess_fn,
-        model_trace,
-    ) = infer.util.initialize_model(
-        rng_key,
-        model,
-        dynamic_args=True,
-        model_args=model_args,
-        model_kwargs=model_kwargs,
-    )
-    init_params = params_info[0]
-    model_kwargs = {} if model_kwargs is None else model_kwargs
-    potential_fn = potential_fn_gen(*model_args, **model_kwargs)
-    return init_params, potential_fn, postprocess_fn
 
 ###############################################################################
 # functions used withing lax.cond to create the output state for `sample`

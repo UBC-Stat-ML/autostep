@@ -82,7 +82,7 @@ def trace_from_unconst_samples(
     return trace(substituted_model).get_trace(*model_args, **model_kwargs)
 
 # tempered potential of a model
-def logprior_and_loglik(model, model_args, model_kwargs, unconstrained_sample):
+def model_logprior_and_loglik(model, model_args, model_kwargs, unconstrained_sample):
     """
     Compute the log-prior and log-likelihood of a model at a specified
     unconstrained sample.
@@ -126,3 +126,9 @@ def tempered_potential_from_logprior_and_loglik(log_prior, log_lik, inv_temp):
         return -(log_prior + log_lik) # default to log posterior
     else:
         return -(log_prior + inv_temp*log_lik)
+
+# shortcut utility
+def tempered_potential(logprior_and_loglik, params, inv_temp):
+    return tempered_potential_from_logprior_and_loglik(
+        *logprior_and_loglik(params), inv_temp
+    )

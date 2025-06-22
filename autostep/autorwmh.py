@@ -16,7 +16,8 @@ class AutoRWMH(autostep.AutoStep):
         init_base_step_size = 1.0,
         selector = selectors.SymmetricSelector(),
         preconditioner = preconditioning.FixedDiagonalPreconditioner(),
-        init_inv_temp = None
+        init_inv_temp = None,
+        n_iter_opt_init_params = 0
     ):
         self._model = model
         self._potential_fn = potential_fn
@@ -28,6 +29,7 @@ class AutoRWMH(autostep.AutoStep):
         self.init_inv_temp = (
             None if init_inv_temp is None else jnp.array(init_inv_temp)
         )
+        self.n_iter_opt_init_params = n_iter_opt_init_params
    
     def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
