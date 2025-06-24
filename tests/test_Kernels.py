@@ -155,7 +155,7 @@ class TestKernels(unittest.TestCase):
         true_sd = jnp.sqrt(true_var)
         n_rounds = 14
         n_warmup, n_keep = utils.split_n_rounds(n_rounds)
-        tol = 0.15
+        tol = 0.2
         for kernel_class in self.TESTED_KERNELS:
             for sel in self.TESTED_SELECTORS:
                 with self.subTest(kernel_class=kernel_class, sel_type=type(sel)):

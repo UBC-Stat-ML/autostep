@@ -49,12 +49,12 @@ def optimize_init_params(logprior_and_loglik, init_params, inv_temp, n_iter):
         updates, opt_state = solver.update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
         return (params, opt_state), None
-    print(f'Initial tempered potential: {target_fun(init_params):.1e}')
+    print(f'Initial energy: {target_fun(init_params):.1e}')
     opt_params, opt_state = lax.scan(
         scan_fn, 
         (init_params, solver.init(init_params)),
         length = n_iter
     )[0]
-    print(f'Final tempered potential: {target_fun(opt_params):.1e}')
+    print(f'Final energy: {target_fun(opt_params):.1e}')
     
     return opt_params
