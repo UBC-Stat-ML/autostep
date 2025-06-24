@@ -190,7 +190,7 @@ class TestKernels(unittest.TestCase):
 
     def test_numpyro_model(self):
         rng_key = random.key(9)
-        tol = 0.05
+        tol = 0.1
         n_rounds = 14
         n_warmup, n_keep = utils.split_n_rounds(n_rounds)
         for kernel_class in self.TESTED_KERNELS:

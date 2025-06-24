@@ -41,9 +41,14 @@ class StepSizeSelector(ABC):
     
     @staticmethod
     # use smoothing similar to the one in `adapt_base_precond_state`
+    # note: avoid using autoregressive approach because the purpose is only
+    # to avoid quickly setting eps ~ 0 in the initial rounds. Don't want to
+    # bias the step size in later rounds.
     def adapt_base_step_size(base_step_size, mean_step_size, n_samples_in_round):
-        s = (5 + n_samples_in_round*mean_step_size) / (5 + n_samples_in_round)
-        return s
+        return (
+            (5*base_step_size + n_samples_in_round*mean_step_size) /
+            (5 + n_samples_in_round)
+        )
 
 
 def _draw_log_unif_bounds(rng_key):
