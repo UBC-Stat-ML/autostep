@@ -164,7 +164,8 @@ def gen_integrator(logprior_and_loglik, initial_state):
             integrator_scan_body_fn,
             (x_flat, p_flat, step_size, precond_state, inv_temp),
             None,
-            n_steps-1
+            n_steps-1,
+            unroll=True
         )[0]
         # jax.debug.print("post loop: x_flat={xf}, p_flat={v}", ordered=True, xf=x_flat, v=p_flat)
 
