@@ -13,30 +13,9 @@ from autostep import tempering
 
 class AutoHMC(autostep.AutoStep):
 
-    def __init__(
-        self,
-        model=None,
-        potential_fn=None,
-        logprior_and_loglik = None,
-        n_leapfrog_steps = 1,
-        init_base_step_size = 1.0,
-        selector = selectors.SymmetricSelector(),
-        preconditioner = preconditioning.FixedDiagonalPreconditioner(),
-        init_inv_temp = None,
-        n_iter_opt_init_params = 0
-    ):
-        self._model = model
-        self._potential_fn = potential_fn
-        self.logprior_and_loglik = logprior_and_loglik
-        self._postprocess_fn = None
+    def __init__(self, *args, n_leapfrog_steps=1, **kwargs):
+        super().__init__(*args, **kwargs)
         self.n_leapfrog_steps = n_leapfrog_steps
-        self.init_base_step_size = init_base_step_size
-        self.selector = selector
-        self.preconditioner = preconditioner
-        self.init_inv_temp = (
-            None if init_inv_temp is None else jnp.array(init_inv_temp)
-        )
-        self.n_iter_opt_init_params = n_iter_opt_init_params
             
     def init_extras(self, initial_state):
         self.integrator = gen_integrator(self.logprior_and_loglik, initial_state)
@@ -118,10 +97,8 @@ def position_step(x_flat, step_size, precond_state, p_flat):
         prec_p_flat = precond_state.var * p_flat
     return x_flat + step_size * prec_p_flat
 
-# leapfrog integrator using Neal (2011, Fig. 2) trick to use only 
-# (n_steps+1) grad evals
-# IMPORTANT: contrary to HMC convention, `precond_state` is on the scale of
-# Sigma^{1/2}, where Sigma=Cov(x_flat)
+# leapfrog integrator using Neal (2011, Fig. 2) trick to use only (n_steps+1)
+# gradient evaluations
 def gen_integrator(logprior_and_loglik, initial_state):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
     tempered_potential = partial(
