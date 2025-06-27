@@ -14,6 +14,7 @@ from numpyro import util
 
 from autostep import initialization
 from autostep import preconditioning
+from autostep import selectors
 from autostep import statistics
 from autostep import tempering
 from autostep import utils
@@ -56,6 +57,31 @@ It consists of the fields:
 """
 
 class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
+
+    # surprisingly, you *can* have an __init__ method in an ABC class; see
+    # https://stackoverflow.com/q/72924810/5443023
+    def __init__(
+        self,
+        model=None,
+        potential_fn=None,
+        logprior_and_loglik = None,
+        init_base_step_size = 1.0,
+        selector = selectors.SymmetricSelector(),
+        preconditioner = preconditioning.FixedDiagonalPreconditioner(),
+        init_inv_temp = None,
+        initialization_settings = None
+    ):
+        self._model = model
+        self._potential_fn = potential_fn
+        self.logprior_and_loglik = logprior_and_loglik
+        self._postprocess_fn = None
+        self.init_base_step_size = init_base_step_size
+        self.selector = selector
+        self.preconditioner = preconditioner
+        self.init_inv_temp = (
+            None if init_inv_temp is None else jnp.array(init_inv_temp)
+        )
+        self.initialization_settings = initialization_settings
 
     def init_alter_step_size_loop_funs(self):
         self.shrink_step_size_cond_fun = utils.gen_alter_step_size_cond_fun(
@@ -141,12 +167,12 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
                 ))
         
         # maybe optimize the initial parameters
-        if self.n_iter_opt_init_params > 0:
+        if self.initialization_settings is not None:
             initial_params = initialization.optimize_init_params(
                 self.logprior_and_loglik, 
                 initial_params, 
                 self.init_inv_temp,
-                self.n_iter_opt_init_params
+                self.initialization_settings
             )
 
         # initialize the state of the autostep sampler

@@ -22,36 +22,38 @@ from autostep import utils
 
 class TestInitialization(unittest.TestCase):
 
-    TESTED_KERNELS = (
-        autorwmh.AutoRWMH,
-        autohmc.AutoMALA,
-        partial(autohmc.AutoHMC, n_leapfrog_steps=32)
-    )
-
-    # check optimizing initial params improves rhat for unid target with many tosses
+    # check optimizing initial params improves rhat for autoRWMH on the unid
+    # target with many tosses
     def test_optimization(self):
-        rng_key = random.key(9999)
         n_flips, n_heads = 100000, 50000
-        n_optim = 2048
+        init_params = {'p1': jnp.float32(-3), 'p2': jnp.float32(3)}
+        all_initialization_settings = (
+            None,
+            {'strategy': "L-BFGS", 'params': {'n_iter': 64}},
+            {'strategy': "ADAM", 'params': {'n_iter': 2048}}
+        )
         prec = preconditioning.FixedDensePreconditioner()
         n_rounds = 12
         n_warmup, n_keep = utils.split_n_rounds(n_rounds)
-        for kernel_class in self.TESTED_KERNELS:
-            with self.subTest(kernel_class=kernel_class):
-                max_rhats = {}
-                for N in (0, n_optim):
-                    print(f"kernel_class={kernel_class}, n_optim={N}")
+        max_rhats = {}
+        for seed in (9,99,999,9999):
+            rng_key = random.key(seed)
+            max_rhats = list()
+            for initialization_settings in all_initialization_settings:
+                str = None if initialization_settings is None else initialization_settings['strategy']
+                with self.subTest(seed=seed, strategy=str):
                     rng_key, run_key = random.split(rng_key)
-                    kernel = kernel_class(
+                    kernel = autorwmh.AutoRWMH(
                         testutils.toy_unid, 
                         preconditioner = prec, 
-                        n_iter_opt_init_params = N
+                        initialization_settings = initialization_settings
                     )
                     mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep, progress_bar=False)
-                    mcmc.run(run_key, n_flips, n_heads=n_heads)
-                    max_rhats[N] = testutils.extremal_diagnostics(mcmc)[0]
-                self.assertTrue((max_rhats[0] >= max_rhats[n_optim]) or max_rhats[0] < 1.01)
-                
+                    mcmc.run(run_key, n_flips, n_heads=n_heads, init_params=init_params)
+                    max_rhats.append(testutils.extremal_diagnostics(mcmc)[0])
+            print(max_rhats)
+            self.assertTrue(max_rhats[0] >= max_rhats[1])
+            self.assertTrue(max_rhats[0] >= max_rhats[2])
 
 if __name__ == '__main__':
     unittest.main()
