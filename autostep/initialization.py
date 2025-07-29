@@ -60,7 +60,8 @@ def optimize_init_params(
 def optimize_fun(
         target_fun, 
         init_params, 
-        initialization_settings
+        initialization_settings,
+        verbose = True
     ):
 
     # select solver
@@ -68,28 +69,31 @@ def optimize_fun(
     solver_params = initialization_settings['params']
     n_iter = solver_params.pop('n_iter')
     if initialization_settings['strategy'] == "L-BFGS":
-        solver, scan_fn = make_lbfgs_solver(target_fun, solver_params)
+        solver, scan_fn = make_lbfgs_solver(target_fun, solver_params, verbose)
     elif initialization_settings['strategy'] == "ADAM":
-        solver, scan_fn = make_adam_solver(target_fun, solver_params)
+        solver, scan_fn = make_adam_solver(target_fun, solver_params, verbose)
     else:
         raise ValueError(
             f"Unknown strategy '{initialization_settings['strategy']}'"
         )
     
     # optimization loop
-    print(f'Initial energy: {target_fun(init_params):.1e}')
+    if verbose:
+        print(f'Initial energy: {target_fun(init_params):.1e}')
     opt_params, opt_state = lax.scan(
         scan_fn, 
         (init_params, solver.init(init_params)),
         length = n_iter
     )[0]
-    print(f'Final energy: {target_fun(opt_params):.1e}')
+    if verbose:
+        print(f'Final energy: {target_fun(opt_params):.1e}')
     
     return opt_params, opt_state
 
 # L-BFGS
-def make_lbfgs_solver(target_fun, solver_params):
-    print(f'Using L-BFGS to improve initial state.')
+def make_lbfgs_solver(target_fun, solver_params, verbose):
+    if verbose:
+        print(f'Using L-BFGS to improve initial state.')
 
     # can reuse stuff because target is deterministic
     # see https://optax.readthedocs.io/en/stable/api/optimizers.html#lbfgs
@@ -109,8 +113,9 @@ def make_lbfgs_solver(target_fun, solver_params):
     return solver, scan_fn
 
 # ADAM
-def make_adam_solver(target_fun, solver_params):
-    print(f'Using ADAM to improve initial state.')
+def make_adam_solver(target_fun, solver_params, verbose):
+    if verbose:
+        print(f'Using ADAM to improve initial state.')
     learning_rate = solver_params.pop('learning_rate', 0.003) # default LR is from the example in docs
     solver = optax.adam(learning_rate=learning_rate, **solver_params)
     def scan_fn(carry, _):
