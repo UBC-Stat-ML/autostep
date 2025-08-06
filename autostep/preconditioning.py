@@ -63,8 +63,9 @@ A :func:`~collections.namedtuple` defining the values associated with a
 preconditioner. It consists of the fields:
 
  - **var** - Estimated and regularized target variance.
- - **var_chol_tril** - Cholesky tril factor of `var`.
- - **inv_var_triu_factor** - A triu matrix `U` such that `inv(var)=U @ U.T`
+ - **var_chol_tril** - Cholesky lower-triangular (tril) factor of `var`.
+ - **inv_var_triu_factor** - An upper-triangular (triu) matrix `U` such that 
+     `inv(var)=U @ U.T`.
 """
 
 ###############################################################################

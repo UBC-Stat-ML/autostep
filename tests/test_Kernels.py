@@ -13,6 +13,7 @@ from jax import numpy as jnp
 from numpyro.infer import MCMC
 
 from autostep import autohmc
+from autostep import autopcn
 from autostep import autorwmh
 from autostep import preconditioning
 from autostep import selectors
@@ -57,7 +58,9 @@ class TestKernels(unittest.TestCase):
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        partial(autohmc.AutoHMC, n_leapfrog_steps=32)
+        autopcn.AutoPCN,
+        partial(autohmc.AutoHMC, n_leapfrog_steps=32),
+
     )
 
     TESTED_PRECONDITIONERS = (
@@ -80,6 +83,8 @@ class TestKernels(unittest.TestCase):
         for kernel_class in self.TESTED_KERNELS:
             for prec in self.TESTED_PRECONDITIONERS:
                 for sel in self.TESTED_SELECTORS:
+                    if kernel_class == autopcn.AutoPCN and sel != selectors.DeterministicSymmetricSelector:
+                        continue
                     with self.subTest(kernel_class=kernel_class, prec_type=type(prec), sel_type=sel):
                         print(f"kernel_class={kernel_class}, prec_type={type(prec)}, sel_type={sel}")
                         rng_key, run_key = random.split(rng_key)

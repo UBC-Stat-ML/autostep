@@ -26,20 +26,14 @@ class AutoHMC(autostep.AutoStep):
         # This is to minimize the number of matrix operations per leapfrog step.
         p_flat = state.p_flat
         Minv = precond_state.var
-        if jnp.ndim(precond_state.var) == 2:
-            Minv_p_flat = Minv @ p_flat                        
-        else:
-            Minv_p_flat = Minv * p_flat
+        Minv_p_flat = Minv @ p_flat if jnp.ndim(Minv) == 2 else Minv * p_flat
         return 0.5*jnp.dot(Minv_p_flat, p_flat)
     
     def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
         v_flat = random.normal(v_key, jnp.shape(state.p_flat))
         U = precond_state.inv_var_triu_factor
-        if jnp.ndim(U) == 2:
-            p_flat = U @ v_flat
-        else:
-            p_flat = U * v_flat
+        p_flat = U @ v_flat if jnp.ndim(U) == 2 else U * v_flat
         return state._replace(p_flat = p_flat, rng_key = rng_key)
     
     def involution_main(self, step_size, state, precond_state):
