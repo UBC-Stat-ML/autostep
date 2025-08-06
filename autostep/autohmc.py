@@ -7,8 +7,6 @@ from jax import numpy as jnp
 from jax import random
 
 from autostep import autostep
-from autostep import preconditioning
-from autostep import selectors
 from autostep import tempering
 
 class AutoHMC(autostep.AutoStep):

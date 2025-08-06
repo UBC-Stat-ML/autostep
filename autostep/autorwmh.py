@@ -3,8 +3,6 @@ from jax import numpy as jnp
 from jax import random
 
 from autostep import autostep
-from autostep import preconditioning
-from autostep import selectors
 
 class AutoRWMH(autostep.AutoStep):
    

@@ -251,7 +251,18 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         :return: State with updated auxiliary variables.
         """
         raise NotImplementedError
-        
+
+    def step_size(self, base_step_size, exponent):
+        """
+        Compute the step size associated with an exponent. Default implementation
+        gives a base-2 exponential lattice.
+
+        :param base_step_size: The within-round-fixed step size.
+        :param exponent: Integer.
+        :return: Step size.
+        """
+        return base_step_size * (2.0 ** exponent)
+
     @abstractmethod
     def involution_main(self, step_size, state, precond_state):
         """
@@ -311,7 +322,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         state, fwd_exponent = self.auto_step_size(
             state, selector_params, precond_state
         )
-        fwd_step_size = utils.step_size(state.base_step_size, fwd_exponent)
+        fwd_step_size = self.step_size(state.base_step_size, fwd_exponent)
         proposed_state = self.update_log_joint(
             self.involution_main(fwd_step_size, state, precond_state),
             precond_state
@@ -355,7 +366,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         )
 
         # collect statistics
-        bwd_step_size = utils.step_size(state.base_step_size, bwd_exponent)
+        bwd_step_size = self.step_size(state.base_step_size, bwd_exponent)
         avg_fwd_bwd_step_size = 0.5 * (fwd_step_size + bwd_step_size)
         new_stats = statistics.record_post_sample_stats(
             next_state.stats, avg_fwd_bwd_step_size, acc_prob, reversibility_passed,

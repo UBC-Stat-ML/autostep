@@ -83,9 +83,6 @@ def next_state_rejected(args):
 
 DEBUG_ALTER_STEP_SIZE = None # anything other than None will print during step size loop
 
-def step_size(base_step_size, exponent):
-    return base_step_size * (2.0 ** exponent)
-
 def copy_state_extras(source, dest):
     return dest._replace(stats = source.stats, rng_key = source.rng_key)
 
@@ -124,7 +121,7 @@ def gen_alter_step_size_body_fun(kernel, direction):
             precond_state
         ) = args
         exponent = exponent + direction
-        eps = step_size(state.base_step_size, exponent)
+        eps = kernel.step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(
             kernel.involution_main(eps, state, precond_state),
             precond_state
