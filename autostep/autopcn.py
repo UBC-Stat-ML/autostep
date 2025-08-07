@@ -35,7 +35,7 @@ class AutoPCN(autostep.AutoStep):
     
     # pCN as rotation
     # note: for implementation purposes, we assume `step_size` to be abs value 
-    # of the angle. The sign is stored in `base_step_size` for convenience
+    # of the angle, while the sign is stored in `base_step_size` for convenience
     def involution_main(self, step_size, state, precond_state):
         x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)
         p_flat = state.p_flat

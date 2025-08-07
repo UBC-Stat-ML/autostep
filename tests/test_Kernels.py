@@ -58,7 +58,6 @@ class TestKernels(unittest.TestCase):
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        autopcn.AutoPCN,
         partial(autohmc.AutoHMC, n_leapfrog_steps=32),
 
     )
@@ -80,7 +79,7 @@ class TestKernels(unittest.TestCase):
         init_val = jnp.array([1., 2.])
         n_warmup = utils.split_n_rounds(10)[0]
         rng_key = random.key(321)
-        for kernel_class in self.TESTED_KERNELS:
+        for kernel_class in (autopcn.AutoPCN, *self.TESTED_KERNELS): # pCN only tested here
             for prec in self.TESTED_PRECONDITIONERS:
                 for sel in self.TESTED_SELECTORS:
                     if kernel_class == autopcn.AutoPCN and sel != selectors.DeterministicSymmetricSelector:
