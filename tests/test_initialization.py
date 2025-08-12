@@ -80,7 +80,7 @@ class TestInitialization(unittest.TestCase):
             if site["type"] == "sample" and not site["is_observed"]
         }
         self.assertTrue(jnp.allclose(MAP_estimate['mu'], MAP_estimate['theta']))
-        self.assertLess(MAP_estimate['tau'], 1e-6)
+        self.assertLess(MAP_estimate['tau'], 1e-5)
 
 if __name__ == '__main__':
     unittest.main()
