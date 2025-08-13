@@ -33,9 +33,28 @@ def init_model(model, rng_key, model_args, model_kwargs):
     return init_params, potential_fn, postprocess_fn
 
 ###############################################################################
-# find a better starting point using optimization
+# optimization-based initialization utils
 ###############################################################################
 
+# standalone (i.e., no kernel required) MAP optimization
+def MAP(
+        model,
+        rng_key,
+        model_args,
+        model_kwargs,
+        options = {'strategy': "L-BFGS", 'params': {'n_iter': 64}}
+    ):
+    init_params, potential_fn, *_ = init_model(
+        model, rng_key, model_args, model_kwargs
+    )
+    return optimize_fun(
+        potential_fn, 
+        init_params, 
+        options,
+        verbose = True
+    )
+
+# called within kernel initialization
 def optimize_init_params(
         logprior_and_loglik, 
         init_params, 
