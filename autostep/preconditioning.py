@@ -54,7 +54,7 @@ PreconditionerState = namedtuple(
     "PreconditionerState",
     [
         "var",
-        "var_chol_tril",
+        "var_tril_factor",
         "inv_var_triu_factor"
     ]
 )
@@ -63,9 +63,10 @@ A :func:`~collections.namedtuple` defining the values associated with a
 preconditioner. It consists of the fields:
 
  - **var** - Estimated and regularized target variance.
- - **var_chol_tril** - Cholesky lower-triangular (tril) factor of `var`.
+ - **var_tril_factor** - A lower-triangular (tril) matrix `L` such that 
+     `var == L @ L.T`.
  - **inv_var_triu_factor** - An upper-triangular (triu) matrix `U` such that 
-     `inv(var)=U @ U.T`.
+     `inv(var) == U @ U.T`.
 """
 
 ###############################################################################
@@ -144,17 +145,25 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
 # apparently are used in Stan, according to NumPyro
 # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
 def adapt_base_precond_state(base_precond_state, sample_var, n):
-    # new variance as weighted average of old and the estimated one
-    var = (n / (n + 5))*sample_var + (5 / (n + 5))*base_precond_state.var
+    # define a nugget
+    eps = 10 * lax.sqrt(jnp.finfo(sample_var.dtype).eps) * (
+        jnp.identity(sample_var.shape[-1]) if jnp.ndim(sample_var)==2 else 1
+    )
+
+    # new variance as weighted average of old+nugget, and the estimated one
+    var = (5*(eps+base_precond_state.var) + n*sample_var) / (n + 5)
 
     # compute the remaining terms, depending on shape
     if jnp.ndim(sample_var) == 2:
-        var_chol_tril = lax.linalg.cholesky(var)
+        var_tril_factor = lax.linalg.cholesky(var)
         inv_var_triu_factor = lax.linalg.triangular_solve(
-            var_chol_tril.T, jnp.identity(var.shape[0])
+            var_tril_factor, 
+            jnp.identity(var.shape[-1]), 
+            transpose_a=True, 
+            lower=True
         )
     else:
-        var_chol_tril = lax.sqrt(var)
-        inv_var_triu_factor = jnp.reciprocal(var_chol_tril)
+        var_tril_factor = lax.sqrt(var)
+        inv_var_triu_factor = jnp.reciprocal(var_tril_factor)
 
-    return PreconditionerState(var, var_chol_tril, inv_var_triu_factor)
+    return PreconditionerState(var, var_tril_factor, inv_var_triu_factor)

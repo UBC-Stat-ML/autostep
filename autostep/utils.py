@@ -2,9 +2,6 @@ import jax
 from jax import lax
 from jax import numpy as jnp
 from jax.experimental import checkify
-from numpyro import infer
-
-from autostep.preconditioning import is_dense
 
 ###############################################################################
 # basic utilities
@@ -132,9 +129,10 @@ def gen_alter_step_size_body_fun(kernel, direction):
         # maybe print debug info
         if DEBUG_ALTER_STEP_SIZE is not None:
             jax.debug.print(
-                "dir: {d}: + exp: {e} + eps: {s:.8f} + (L0, L1, DL, NDL): ({l0:.2f},{l1:.2f},{dl:.2f},{ndl:.2f}) + bounds: ({a},{b})", 
+                "dir: {d: d}: base: {bs:.8f} + exp: {e: d} = eps: {s:.8f} | (L0, L1, DL, NDL): ({l0: .2f},{l1: .2f},{dl: .2f},{ndl: .2f}) | bounds: ({a:.3f},{b:.3f})", 
                 ordered=True,
                 d=direction, 
+                bs=state.base_step_size,
                 e=exponent,
                 s=eps,
                 l0=init_log_joint,
@@ -144,6 +142,12 @@ def gen_alter_step_size_body_fun(kernel, direction):
                 a=selector_params[0],
                 b=selector_params[1]
             )
+            # jax.debug.print(
+            #     "{v} | {c} | {i}",
+            #     v=precond_state.var,
+            #     c=precond_state.var_tril_factor,
+            #     i=precond_state.inv_var_triu_factor
+            # )
 
         return (
             state, 

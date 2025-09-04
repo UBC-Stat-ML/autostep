@@ -302,7 +302,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         #     "precond_state: var={v}   chol_tril={c}   inv_fac={i}", 
         #     ordered=True, 
         #     v=precond_state.var,
-        #     c=precond_state.var_chol_tril,
+        #     c=precond_state.var_tril_factor,
         #     i=precond_state.inv_var_triu_factor
         # )
 

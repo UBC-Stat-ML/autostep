@@ -7,7 +7,9 @@ from autostep import autostep
 class AutoPCN(autostep.AutoStep):
     """
     Involutive implementation of a finite-dimensional Preconditioned 
-    Crank-Nicolson sampler a la [1].
+    Crank-Nicolson sampler à la [1].
+
+    .. warning:: This class is still under development.
 
     [1] Cotter, S. L., Roberts, G. O., Stuart, A. M., & White, D. (2013). 
     MCMC methods for functions: Modifying old algorithms to make them faster.
@@ -29,7 +31,7 @@ class AutoPCN(autostep.AutoStep):
     def refresh_aux_vars(self, state, precond_state):
         rng_key, v_key = random.split(state.rng_key)
         v_flat = random.normal(v_key, jnp.shape(state.p_flat))
-        L = precond_state.var_chol_tril
+        L = precond_state.var_tril_factor
         p_flat = L @ v_flat if jnp.ndim(L) == 2 else L * v_flat
         return state._replace(p_flat = p_flat, rng_key = rng_key)
     
