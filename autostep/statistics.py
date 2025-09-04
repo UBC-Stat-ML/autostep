@@ -1,8 +1,9 @@
 from collections import namedtuple
 
-from jax import lax
+import jax
 from jax import numpy as jnp
 
+from autostep.utils import current_round
 from autostep.preconditioning import is_dense, adapt_base_precond_state
 
 AutoStepAdaptStats = namedtuple(
@@ -117,7 +118,7 @@ def delta_vars(sample_var, dx1, dx2):
 ## Update sampler parameters using the adaptation statitics of a round
 ## See `adapt` method in AutoStep
 def update_sampler_params(step_size_selector, args):
-    base_step_size, _, adapt_stats = args
+    base_step_size, base_precond_state, adapt_stats = args
     n_samples_in_round = adapt_stats.sample_idx
 
     # set the average step size of the prev round as the new base step size
@@ -128,8 +129,17 @@ def update_sampler_params(step_size_selector, args):
 
     # adapt the preconditioner
     new_base_precond_state = adapt_base_precond_state(
-        adapt_stats.sample_var, n_samples_in_round
+        base_precond_state, adapt_stats.sample_var, n_samples_in_round
     )
+
+    # # debug
+    # jax.debug.print(
+    #     "End of round {}\nbase_precond_state={}\nadapt_stats={}\nnew_base_precond_state={}",
+    #     current_round(n_samples_in_round),
+    #     base_precond_state,
+    #     adapt_stats,
+    #     new_base_precond_state
+    # )
 
     # empty the adapt recorder and return
     new_adapt_stats = empty_adapt_stats_recorder(adapt_stats)

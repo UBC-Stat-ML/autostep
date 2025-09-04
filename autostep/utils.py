@@ -2,9 +2,6 @@ import jax
 from jax import lax
 from jax import numpy as jnp
 from jax.experimental import checkify
-from numpyro import infer
-
-from autostep.preconditioning import is_dense
 
 ###############################################################################
 # basic utilities
@@ -83,9 +80,6 @@ def next_state_rejected(args):
 
 DEBUG_ALTER_STEP_SIZE = None # anything other than None will print during step size loop
 
-def step_size(base_step_size, exponent):
-    return base_step_size * (2.0 ** exponent)
-
 def copy_state_extras(source, dest):
     return dest._replace(stats = source.stats, rng_key = source.rng_key)
 
@@ -124,7 +118,7 @@ def gen_alter_step_size_body_fun(kernel, direction):
             precond_state
         ) = args
         exponent = exponent + direction
-        eps = step_size(state.base_step_size, exponent)
+        eps = kernel.step_size(state.base_step_size, exponent)
         next_state = kernel.update_log_joint(
             kernel.involution_main(eps, state, precond_state),
             precond_state
@@ -135,9 +129,10 @@ def gen_alter_step_size_body_fun(kernel, direction):
         # maybe print debug info
         if DEBUG_ALTER_STEP_SIZE is not None:
             jax.debug.print(
-                "dir: {d}: + exp: {e} + eps: {s:.8f} + (L0, L1, DL, NDL): ({l0:.2f},{l1:.2f},{dl:.2f},{ndl:.2f}) + bounds: ({a},{b})", 
+                "dir: {d: d}: base: {bs:.8f} + exp: {e: d} = eps: {s:.8f} | (L0, L1, DL, NDL): ({l0: .2f},{l1: .2f},{dl: .2f},{ndl: .2f}) | bounds: ({a:.3f},{b:.3f})", 
                 ordered=True,
                 d=direction, 
+                bs=state.base_step_size,
                 e=exponent,
                 s=eps,
                 l0=init_log_joint,
@@ -147,6 +142,12 @@ def gen_alter_step_size_body_fun(kernel, direction):
                 a=selector_params[0],
                 b=selector_params[1]
             )
+            # jax.debug.print(
+            #     "{v} | {c} | {i}",
+            #     v=precond_state.var,
+            #     c=precond_state.var_tril_factor,
+            #     i=precond_state.inv_var_triu_factor
+            # )
 
         return (
             state, 

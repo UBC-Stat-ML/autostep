@@ -3,8 +3,6 @@ from jax import numpy as jnp
 from jax import random
 
 from autostep import autostep
-from autostep import preconditioning
-from autostep import selectors
 
 class AutoRWMH(autostep.AutoStep):
    
@@ -15,10 +13,10 @@ class AutoRWMH(autostep.AutoStep):
     
     def involution_main(self, step_size, state, precond_state):
         x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)
-        if jnp.ndim(precond_state.var_chol_tril) == 2:
-            prec_p_flat = precond_state.var_chol_tril @ state.p_flat
+        if jnp.ndim(precond_state.var_tril_factor) == 2:
+            prec_p_flat = precond_state.var_tril_factor @ state.p_flat
         else:
-            prec_p_flat = precond_state.var_chol_tril * state.p_flat
+            prec_p_flat = precond_state.var_tril_factor * state.p_flat
         x_new = unravel_fn(x_flat + step_size * prec_p_flat)
         return state._replace(x = x_new)
     
