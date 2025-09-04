@@ -3,7 +3,7 @@
 
 # `autostep`
 
-***A NumPyro-compatible JAX implementation of autoStep samplers***
+***A NumPyro-compatible JAX implementation of AutoStep samplers***
 
 ## Installation
 
@@ -47,19 +47,19 @@ mcmc.run(random.key(9), sigma, y=y)
 mcmc.print_summary()
 ```
 ```
-sample: 100%|███| 32766/32766 [00:56<00:00, 577.20it/s, base_step_size 1.59e-01. mean_acc_prob=0.81]
+sample: 100%|███| 32766/32766 [00:58<00:00, 561.27it/s, base_step 1.50e-01, rev_rate=0.89, acc_prob=0.81]
 
                 mean       std    median      5.0%     95.0%     n_eff     r_hat
-        mu      4.44      3.29      4.46     -0.93      9.91   8377.35      1.00
-       tau      3.71      3.34      2.84      0.02      8.09    451.99      1.00
-  theta[0]      6.31      5.66      5.68     -3.13     14.37   3559.68      1.00
-  theta[1]      4.97      4.73      4.94     -2.51     12.62  10851.66      1.00
-  theta[2]      3.96      5.39      4.23     -4.20     12.80   8986.34      1.00
-  theta[3]      4.80      4.76      4.80     -3.03     12.16  10271.22      1.00
-  theta[4]      3.62      4.64      3.89     -3.77     11.00   6365.64      1.00
-  theta[5]      4.03      4.84      4.17     -3.62     12.08   9346.41      1.00
-  theta[6]      6.44      5.22      5.91     -1.97     14.45   3388.24      1.00
-  theta[7]      4.95      5.43      4.84     -3.48     13.50  11422.42      1.00
+        mu      4.35      3.34      4.40     -1.06      9.85  11948.87      1.00
+       tau      3.67      3.34      2.82      0.02      7.83    561.33      1.00
+  theta[0]      6.26      5.66      5.69     -2.43     15.03   3694.65      1.00
+  theta[1]      4.85      4.72      4.77     -2.67     12.64  12237.45      1.00
+  theta[2]      3.92      5.39      4.15     -4.70     12.35  10668.33      1.00
+  theta[3]      4.74      4.82      4.72     -3.21     12.15  14035.57      1.00
+  theta[4]      3.59      4.74      3.85     -3.84     11.44   6886.19      1.00
+  theta[5]      4.00      4.86      4.17     -3.73     11.73  10520.05      1.00
+  theta[6]      6.34      5.12      5.86     -1.64     14.61   3060.37      1.00
+  theta[7]      4.83      5.47      4.75     -3.86     12.89  12227.15      1.00
 ```
 
 ## TODO
@@ -75,4 +75,4 @@ Biron-Lattes, M., Surjanovic, N., Syed, S., Campbell, T., & Bouchard-Côté, A..
 in *Proceedings of Machine Learning Research* 238:4600-4608.
 
 Liu, T., Surjanovic, N., Biron-Lattes, M., Bouchard-Côté, A., & Campbell, T. (2024). 
-[AutoStep: Locally adaptive involutive MCMC](https://arxiv.org/abs/2410.18929). arXiv preprint arXiv:2410.18929.
+[AutoStep: Locally adaptive involutive MCMC](https://openreview.net/forum?id=QUOwuRtf61). ICML 2025.
