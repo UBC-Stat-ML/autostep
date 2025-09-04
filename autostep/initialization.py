@@ -89,8 +89,6 @@ def optimize_fun(
     n_iter = solver_params.pop('n_iter')
     if initialization_settings['strategy'] == "L-BFGS":
         solver, scan_fn = make_lbfgs_solver(target_fun, solver_params, verbose)
-    elif initialization_settings['strategy'] == "ADAM":
-        solver, scan_fn = make_adam_solver(target_fun, solver_params, verbose)
     else:
         raise ValueError(
             f"Unknown strategy '{initialization_settings['strategy']}'"
@@ -131,17 +129,3 @@ def make_lbfgs_solver(target_fun, solver_params, verbose):
     
     return solver, scan_fn
 
-# ADAM
-def make_adam_solver(target_fun, solver_params, verbose):
-    if verbose:
-        print(f'Using ADAM to improve initial state.')
-    learning_rate = solver_params.pop('learning_rate', 0.003) # default LR is from the example in docs
-    solver = optax.adam(learning_rate=learning_rate, **solver_params)
-    def scan_fn(carry, _):
-        params, opt_state = carry
-        grad = jax.grad(target_fun)(params)
-        updates, opt_state = solver.update(grad, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return (params, opt_state), None
-    
-    return solver, scan_fn

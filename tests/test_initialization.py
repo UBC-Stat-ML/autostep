@@ -32,7 +32,6 @@ class TestInitialization(unittest.TestCase):
         all_initialization_settings = (
             None,
             {'strategy': "L-BFGS", 'params': {'n_iter': 64}},
-            {'strategy': "ADAM", 'params': {'n_iter': 2048}}
         )
         prec = preconditioning.FixedDensePreconditioner()
         n_rounds = 12
