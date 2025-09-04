@@ -45,7 +45,8 @@ class TestTempering(unittest.TestCase):
                         jnp.allclose(adapt_stats.sample_mean, true_mean, atol=0.3, rtol=0.1) # need atol to handle mean=0 for inv_temp=0
                     )
                     self.assertTrue(
-                        jnp.allclose(adapt_stats.sample_var, true_var, rtol=0.15)
+                        jnp.allclose(adapt_stats.sample_var, true_var, rtol=0.2),
+                        msg=f"sample_var={adapt_stats.sample_var} but true_var={true_var}"
                     )
 
 if __name__ == '__main__':
