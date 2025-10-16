@@ -41,7 +41,7 @@ def optimize_fun(
     ):
     if tol is None:
         # default to sqrt of machine tol of the float type used in the first leaf
-        tol = jnp.sqrt(jnp.finfo(jax.tree.leaves(init_params)[0].dtype).eps)
+        tol = jnp.finfo(jax.tree.leaves(init_params)[0].dtype).eps
 
     # select solver
     solver = settings['strategy']
