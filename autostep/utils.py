@@ -17,6 +17,9 @@ def checkified_is_zero(x):
   checkify.check(x==0, f"Expected zero but x = {x}")
   return True
 
+def pytree_norm(x, *args, **kwargs):
+    return jnp.linalg.norm(jax.flatten_util.ravel_pytree(x)[0], *args, **kwargs)
+
 def ceil_log2(x):
     """
     Ceiling of log2(x). Guaranteed to be an integer.

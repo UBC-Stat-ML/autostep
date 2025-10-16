@@ -219,12 +219,8 @@ class TestKernels(unittest.TestCase):
                         self.assertLess(testutils.extremal_diagnostics(mcmc)[0], 1+tol)
                         self.assertAlmostEqual(samples["p1"].mean(), 0.71, delta=tol)
                         self.assertAlmostEqual(samples["p2"].mean(), 0.71, delta=tol)
-                        # self.assertTrue(jnp.isclose(samples["p1"].mean(), 0.71, atol=tol, rtol=tol))
-                        # self.assertTrue(jnp.isclose(samples["p2"].mean(), 0.71, atol=tol, rtol=tol))
                         mean_p_prod = (samples["p1"] * samples["p2"]).mean()
                         self.assertAlmostEqual(mean_p_prod, 0.5, delta=tol)
-                        # self.assertTrue(jnp.isclose(mean_p_prod, 0.5, atol=tol, rtol=tol))
-
                 
 
 if __name__ == '__main__':
