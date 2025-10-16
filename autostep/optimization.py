@@ -26,7 +26,7 @@ def make_lbfgs_solver(target_fun, solver_params, verbose):
             grad, opt_state, params, value=value, grad=grad, value_fn=target_fun
         )
         params = optax.apply_updates(params, updates)
-        grad_norm = utils.pytree_norm(grad)
+        grad_norm = utils.pytree_norm(grad, ord=jnp.inf) # sup norm
         return params, opt_state, value, grad_norm
     
     return solver, step_fn
@@ -55,7 +55,6 @@ def optimize_fun(
         )
     
     # optimization loop
-    min_iter = min(n_iter, max(32, n_iter//8))
     value = old_value = target_fun(init_params)
     verbose and print(f'Initial energy: {value:.1e}')
     params, opt_state = init_params, solver.init(init_params)
@@ -64,10 +63,9 @@ def optimize_fun(
     n = 0
     with tqdm.tqdm(total=n_iter, disable=(not verbose)) as t:
         while (
-            n < min_iter or ( # avoid early termination
-                n < n_iter and 
-                grad_norm > tol and 
-                value_abs_diff > tol and 
+            n < n_iter and ( 
+                grad_norm > tol or 
+                value_abs_diff > tol or 
                 params_diff_norm > tol
             ) 
         ):
@@ -75,7 +73,8 @@ def optimize_fun(
             value_abs_diff = jnp.abs(value-old_value)
             old_value = value
             params_diff_norm = utils.pytree_norm(
-                jax.tree.map(lambda a,b: a-b, params, old_params)
+                jax.tree.map(lambda a,b: a-b, params, old_params),
+                ord=jnp.inf # sup norm
             )
             old_params = params
             diag_str = "f={:.1e}, Δf={:.0e}, |g|={:.0e}, |Δx|={:.0e}" \
