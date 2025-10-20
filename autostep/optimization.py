@@ -1,5 +1,7 @@
 import math
 
+import numpy as np
+
 import jax
 from jax import numpy as jnp
 
@@ -38,6 +40,7 @@ def optimize_fun(
         settings,
         verbose = True,
         tol = None,
+        max_consecutive = 3
     ):
     if tol is None:
         # default to sqrt of machine tol of the float type used in the first leaf
@@ -60,16 +63,14 @@ def optimize_fun(
     params, opt_state = init_params, solver.init(init_params)
     old_params = params
     grad_norm = value_abs_diff = params_diff_norm = jnp.full_like(value, 10*tol)
+    n_consecutive = np.zeros((3,), np.int8) # one counter for each termination criterion
     n = 0
     with tqdm.tqdm(total=n_iter, disable=(not verbose)) as t:
-        while (
-            n < n_iter and ( 
-                grad_norm > tol or 
-                value_abs_diff > tol or 
-                params_diff_norm > tol
-            ) 
-        ):
+        while (n < n_iter and np.all(n_consecutive < max_consecutive)):
+            # take one optim step
             params, opt_state, value, grad_norm = step_fn(params, opt_state)
+
+            # update termination indicators
             value_abs_diff = jnp.abs(value-old_value)
             old_value = value
             params_diff_norm = utils.pytree_norm(
@@ -77,12 +78,17 @@ def optimize_fun(
                 ord=jnp.inf # sup norm
             )
             old_params = params
+
+            # update termination counters
+            for (i,eps) in enumerate((grad_norm,value_abs_diff,params_diff_norm)):
+                n_consecutive[i] = n_consecutive[i]+1 if eps < tol else 0
+
+            # update progress bar and iteration counter
             diag_str = "f={:.1e}, Δf={:.0e}, |g|={:.0e}, |Δx|={:.0e}" \
                 .format(value, value_abs_diff, grad_norm, params_diff_norm)
             t.set_postfix_str(diag_str, refresh=False) # will refresh with `update`
             t.update()
             n += 1
-
 
     if verbose:
         print(f'Final energy after {n} steps: {target_fun(params):.1e}')
