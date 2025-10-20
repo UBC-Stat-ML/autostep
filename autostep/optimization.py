@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import math
 
 import numpy as np
@@ -40,11 +42,13 @@ def optimize_fun(
         settings,
         verbose = True,
         tol = None,
-        max_consecutive = 3
+        max_consecutive = 8
     ):
+    settings = deepcopy(settings) # safer since we `pop` stuff from it
+    
     if tol is None:
         # default to sqrt of machine tol of the float type used in the first leaf
-        tol = jnp.finfo(jax.tree.leaves(init_params)[0].dtype).eps
+        tol = 10*jnp.finfo(jax.tree.leaves(init_params)[0].dtype).eps
 
     # select solver
     solver = settings['strategy']

@@ -1,5 +1,4 @@
 from functools import partial
-from copy import deepcopy
 
 from numpyro import infer
 
@@ -67,5 +66,5 @@ def optimize_init_params(
     return optimization.optimize_fun(
         target_fun, 
         init_params, 
-        deepcopy(initialization_settings) # safer since we `pop` stuff from it
+        initialization_settings
     )[0]
