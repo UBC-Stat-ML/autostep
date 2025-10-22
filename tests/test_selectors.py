@@ -53,6 +53,31 @@ class TestSelectors(unittest.TestCase):
         self.assertFalse(det_asym_sel.should_shrink(params, log_diff))
         self.assertFalse(sym_sel.should_shrink(params, log_diff))
         self.assertFalse(det_sym_sel.should_shrink(params, log_diff))
+    
+    def test_max_n_iter_respected(self):
+        kernel_class = autohmc.AutoMALA
+        rng_key = random.key(90)
+        for max_n_iter in range(1,4):
+            rng_key, run_key = random.split(rng_key)
+            kernel = kernel_class(
+                testutils.toy_unid,
+                selector=selectors.DeterministicSymmetricSelector(max_n_iter=max_n_iter),
+                init_base_step_size = 100.0 # big number
+            )
+
+            # just need this to init the state
+            mcmc = MCMC(kernel, num_warmup=0, num_samples=1, progress_bar=False)
+            mcmc.run(run_key, 100, n_heads=50)
+            kernel = mcmc.sampler
+            state = mcmc.last_state
+            precond_state = state.base_precond_state
+            
+            # check n iters are bounded
+            state = kernel.update_log_joint(state, precond_state) # should be ok but just in case
+            exponent = kernel.auto_step_size(
+                state, (-2.0, -1.0), precond_state # any log bounds should work
+            )[-1]
+            self.assertLessEqual(jnp.abs(exponent), max_n_iter)
 
     # fixed selector preserves the initial base step size
     def test_fixed_step_size_preserved(self):

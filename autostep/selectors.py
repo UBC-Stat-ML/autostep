@@ -18,7 +18,7 @@ class StepSizeSelector(ABC):
 
     def __init__(
             self, 
-            max_n_iter=2**20, 
+            max_n_iter=20,
             bounds_sampler=_draw_log_unif_bounds
         ):
         self.max_n_iter = max_n_iter
