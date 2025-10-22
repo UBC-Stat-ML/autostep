@@ -11,12 +11,21 @@ from autostep import tempering
 
 class AutoHMC(autostep.AutoStep):
 
-    def __init__(self, *args, n_leapfrog_steps=1, **kwargs):
+    def __init__(
+            self, 
+            *args, 
+            n_leapfrog_steps=1, 
+            forward_mode_ad=False, 
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         self.n_leapfrog_steps = n_leapfrog_steps
+        self.forward_mode_ad = forward_mode_ad
             
     def init_extras(self, initial_state):
-        self.integrator = gen_integrator(self.logprior_and_loglik, initial_state)
+        self.integrator = gen_integrator(
+            self.logprior_and_loglik, initial_state, self.forward_mode_ad
+        )
         return initial_state
     
     def kinetic_energy(self, state, precond_state):
@@ -91,7 +100,7 @@ def position_step(x_flat, step_size, precond_state, p_flat):
 
 # leapfrog integrator using Neal (2011, Fig. 2) trick to use only (n_steps+1)
 # gradient evaluations
-def gen_integrator(logprior_and_loglik, initial_state):
+def gen_integrator(logprior_and_loglik, initial_state, forward_mode_ad):
     unravel_fn = flatten_util.ravel_pytree(initial_state.x)[1]
     tempered_potential = partial(
         tempering.tempered_potential, logprior_and_loglik
@@ -102,10 +111,16 @@ def gen_integrator(logprior_and_loglik, initial_state):
         Flattened gradient of the potential evaluated at a flattened 
         unconstrained state.
         """
-        return flatten_util.ravel_pytree(
-            # note: by default, `grad` takes gradient w.r.t. the first arg only
-            jax.grad(tempered_potential)(unravel_fn(x_flat), inv_temp)
-        )[0]
+        # unflatten state and take gradient 
+        # note: by default, `grad` and `jacfwd` take diff w.r.t. the first arg only
+        x = unravel_fn(x_flat)
+        if forward_mode_ad:
+            grad_x = jax.jacfwd(tempered_potential)(x, inv_temp)
+        else:
+            grad_x = jax.grad(tempered_potential)(x, inv_temp)
+
+        # flatten grad and return
+        return flatten_util.ravel_pytree(grad_x)[0]
 
     # full position and velocity updates
     def integrator_scan_body_fn(carry, _):
