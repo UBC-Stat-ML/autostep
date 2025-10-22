@@ -119,33 +119,37 @@ class TestKernels(unittest.TestCase):
         n_samples = 1024
         pval_threshold = 0.01
         rng_key = random.key(2)
+        max_n_iters = (1, 2**20)
         
         for kernel_class in self.TESTED_KERNELS:
             for prec in self.TESTED_PRECONDITIONERS:
                 for sel in self.TESTED_SELECTORS:
-                    with self.subTest(kernel_class=kernel_class, prec_type=type(prec), sel_type=sel):
-                        print(f"kernel_class={kernel_class}, prec_type={type(prec)}, sel_type={sel}")
-                        rng_key, exp_key = random.split(rng_key)
-                        def run_fn(init_key):
-                            kernel = kernel_class(
-                                potential_fn=testutils.gaussian_potential, 
-                                selector=sel(),
-                                preconditioner = prec
-                            )
-                            kernel, kernel_state = init_and_tune_kernel(
-                                kernel, 
-                                dim, 
-                                true_mean, 
-                                true_sd, 
-                                n_warmup,
-                                init_key
-                            )
-                            return loop_sample(kernel, n_refresh, kernel_state).x[0]
-                        vmap_fn = jax.vmap(run_fn)
-                        run_keys = random.split(exp_key, n_samples)
-                        mcmc_samples = vmap_fn(run_keys)
-                        ks_res = stats.ks_1samp(mcmc_samples, true_cdf)
-                        self.assertGreater(ks_res.pvalue, pval_threshold)
+                    for max_n_iter in max_n_iters:
+                        with self.subTest(
+                            kernel_class=kernel_class, prec_type=type(prec), sel_type=sel, max_n_iter=max_n_iter
+                        ):
+                            print(f"kernel_class={kernel_class}, prec_type={type(prec)}, sel_type={sel}, max_n_iter={max_n_iter}")
+                            rng_key, exp_key = random.split(rng_key)
+                            def run_fn(init_key):
+                                kernel = kernel_class(
+                                    potential_fn=testutils.gaussian_potential, 
+                                    selector=sel(max_n_iter=max_n_iter),
+                                    preconditioner = prec
+                                )
+                                kernel, kernel_state = init_and_tune_kernel(
+                                    kernel, 
+                                    dim, 
+                                    true_mean, 
+                                    true_sd, 
+                                    n_warmup,
+                                    init_key
+                                )
+                                return loop_sample(kernel, n_refresh, kernel_state).x[0]
+                            vmap_fn = jax.vmap(run_fn)
+                            run_keys = random.split(exp_key, n_samples)
+                            mcmc_samples = vmap_fn(run_keys)
+                            ks_res = stats.ks_1samp(mcmc_samples, true_cdf)
+                            self.assertGreater(ks_res.pvalue, pval_threshold)
 
     # test online stats
     # note: currently only tests kernels using the diagonal precond, but the

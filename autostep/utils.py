@@ -31,11 +31,8 @@ def numerically_safe_diff(x0, x1):
     """
     Return `x1-x0` if x1 is not the next float after x0, and 0 otherwise.
     """
-    return jax.lax.cond(
-        jax.lax.nextafter(x0, x1) == x1,
-        lambda t: jnp.zeros_like(t[0]),
-        lambda t: t[1]-t[0],
-        (x0,x1)
+    return jnp.where(
+        jax.lax.nextafter(x0, x1) == x1, jnp.zeros_like(x0), x1-x0
     )
 
 ###############################################################################

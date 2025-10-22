@@ -435,8 +435,13 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
              selector_params, precond_state)
         )
 
-        # deduct 1 step to avoid cliffs, but only if we actually entered the loop
-        exponent = lax.cond(exponent > 0, lambda e: e-1, util.identity, exponent)
+        # deduct 1 step to avoid cliffs, but only if we actually entered the 
+        # loop and didn't go over the max number of iterations
+        exponent = jnp.where(
+            jnp.logical_and(exponent > 0, exponent < self.selector.max_n_iter),
+            exponent-1, 
+            exponent
+        )
         return state, exponent
     
     def adapt(self, state, force=False):
