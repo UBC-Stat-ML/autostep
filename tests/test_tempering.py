@@ -11,7 +11,7 @@ from numpyro.infer import MCMC
 from autostep import autohmc
 from autostep import autorwmh
 from autostep import utils
-
+from autostep import tempering
 
 class TestTempering(unittest.TestCase):
 
@@ -21,6 +21,12 @@ class TestTempering(unittest.TestCase):
         partial(autohmc.AutoHMC, n_leapfrog_steps=32)
     )
     
+    def test_no_nan_at_zero(self):
+        p = tempering.tempered_potential_from_logprior_and_loglik(
+            jnp.float32(0.2), jnp.float32(jnp.inf), jnp.float32(0)
+        )
+        self.assertFalse(jnp.isnan(p))
+
     def test_tempered_moments(self):
         n_rounds = 14
         n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/keep
