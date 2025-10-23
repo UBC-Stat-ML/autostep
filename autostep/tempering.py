@@ -125,7 +125,14 @@ def tempered_potential_from_logprior_and_loglik(log_prior, log_lik, inv_temp):
     if inv_temp is None:
         return -(log_prior + log_lik) # default to log posterior
     else:
-        return -(log_prior + inv_temp*log_lik)
+        # avoid nan by enforcing 0*inf=0
+        actual_zero = jnp.zeros_like(inv_temp)
+        scaled_loglik = jnp.where(
+            inv_temp == actual_zero,
+            actual_zero,
+            inv_temp*log_lik            
+        )
+        return -(log_prior + scaled_loglik)
 
 # shortcut utility
 def tempered_potential(logprior_and_loglik, params, inv_temp):
