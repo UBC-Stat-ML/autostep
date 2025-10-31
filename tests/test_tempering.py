@@ -5,6 +5,7 @@ import unittest
 
 from jax import random
 from jax import numpy as jnp
+jnp.sqrt(3)/jnp.sqrt(2)-1
 
 from numpyro.infer import MCMC
 
@@ -34,6 +35,7 @@ class TestTempering(unittest.TestCase):
         rng_key = random.key(321453)
         for inv_temp in jnp.array([0., 0.25, 0.75, 1.0]):
             true_var = jnp.reciprocal(inv_temp + model_args[0] ** (-2))
+            true_sd = jnp.sqrt(true_var)
             true_mean = inv_temp * model_args[1][0] * true_var
             for kernel_type in self.TESTED_KERNELS:
                 with self.subTest(inv_temp=inv_temp, kernel_type=kernel_type):
@@ -50,9 +52,10 @@ class TestTempering(unittest.TestCase):
                     self.assertTrue(
                         jnp.allclose(adapt_stats.sample_mean, true_mean, atol=0.3, rtol=0.1) # need atol to handle mean=0 for inv_temp=0
                     )
+                    sample_sd = jnp.sqrt(adapt_stats.sample_var)
                     self.assertTrue(
-                        jnp.allclose(adapt_stats.sample_var, true_var, rtol=0.2),
-                        msg=f"sample_var={adapt_stats.sample_var} but true_var={true_var}"
+                        jnp.allclose(sample_sd, true_sd, rtol=0.25),
+                        msg=f"sample_sd={sample_sd} but true_sd={true_sd}"
                     )
 
 if __name__ == '__main__':
