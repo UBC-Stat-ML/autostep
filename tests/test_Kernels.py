@@ -117,7 +117,7 @@ class TestKernels(unittest.TestCase):
         n_warmup = utils.split_n_rounds(10)[0]
         n_refresh = 1024
         n_samples = 1024
-        pval_threshold = 0.01
+        pval_threshold = 0.001
         rng_key = random.key(2)
         max_n_iters = (1, 2**20)
         

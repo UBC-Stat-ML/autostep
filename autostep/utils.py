@@ -65,14 +65,14 @@ def n_warmup_to_adapt_rounds(n_warmup):
 ###############################################################################
 
 def next_state_accepted(args):
-    _, proposed_state, bwd_state, rng_key = args
-    # keep everything from proposed_state except for stats (use bwd) and rng_key
-    return proposed_state._replace(stats = bwd_state.stats, rng_key = rng_key)
+    _, proposed_state, bwd_state = args
+    # keep everything from proposed_state except for stats (use bwd)
+    return proposed_state._replace(stats = bwd_state.stats)
 
 def next_state_rejected(args):
-    init_state, _, bwd_state, rng_key = args
-    # keep everything from init_state except for stats (use bwd) and rng_key
-    return init_state._replace(stats = bwd_state.stats, rng_key = rng_key)
+    init_state, _, bwd_state = args
+    # keep everything from init_state except for stats (use bwd)
+    return init_state._replace(stats = bwd_state.stats)
 
 ###############################################################################
 # functions that control the step-size growing and shrinking loops

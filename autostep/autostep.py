@@ -292,9 +292,16 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         raise NotImplementedError
     
     def sample(self, state, model_args, model_kwargs):
+        # generate rng keys and store the updated master key in the state
+        (
+            rng_key, 
+            precond_key, 
+            selector_key, 
+            accept_key
+        ) = random.split(state.rng_key, 4)
+        state = state._replace(rng_key = rng_key)
+
         # build a (possibly randomized) preconditioner
-        rng_key, precond_key, selector_key = random.split(state.rng_key, 3)
-        state = state._replace(rng_key = rng_key) # always update the state with the modified key!
         precond_state = self.preconditioner.maybe_alter_precond_state(
             state.base_precond_state, precond_key
         )
@@ -343,26 +350,36 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             prop_state_flip, selector_params, precond_state
         )
         reversibility_passed = fwd_exponent == bwd_exponent
+        
+        # sanitize possible nan in proposed log joint, setting them to -inf
+        # this may happen for some too large initial step sizes, and then 
+        # `shrink_step_size` may fail to fix them before the max num of iters
+        proposed_log_joint = jnp.where(
+            jnp.isnan(proposed_state.log_joint),
+            -jnp.inf,
+            proposed_state.log_joint
+        )
 
         # Metropolis-Hastings step
         # note: when the magnitude of log_joint is ~ 1e8, the difference in
         # Float32 precision of two floats next to each other can be >> 1.
         # For this reason, we consider 2 consecutive floats to be equal.
         log_joint_diff = utils.numerically_safe_diff(
-            state.log_joint, proposed_state.log_joint
+            state.log_joint, proposed_log_joint
         )
-        acc_prob = lax.clamp(0., reversibility_passed * lax.exp(log_joint_diff), 1.)
+        acc_prob = lax.clamp(
+            0., reversibility_passed * lax.exp(log_joint_diff), 1.
+        )
         # jax.debug.print(
         #     "bwd done: reversibility_passed={r}, acc_prob={a}", ordered=True,
         #     r=reversibility_passed, a=acc_prob)
-        rng_key, accept_key = random.split(prop_state_flip.rng_key) # note: this is the state with the "freshest" rng_key
 
         # build the next state depending on the MH outcome
         next_state = lax.cond(
             random.bernoulli(accept_key, acc_prob),
             utils.next_state_accepted,
             utils.next_state_rejected,
-            (state, proposed_state, prop_state_flip, rng_key)
+            (state, proposed_state, prop_state_flip)
         )
 
         # collect statistics
