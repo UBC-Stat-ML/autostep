@@ -18,7 +18,7 @@ class StepSizeSelector(ABC):
 
     def __init__(
             self, 
-            max_n_iter=20,
+            max_n_iter=7, # 2**7 => step size changes +/- 2 orders of mag
             bounds_sampler=_draw_log_unif_bounds
         ):
         self.max_n_iter = max_n_iter
@@ -58,15 +58,8 @@ class StepSizeSelector(ABC):
         raise NotImplementedError
     
     @staticmethod
-    # use smoothing similar to the one in `adapt_base_precond_state`
-    # note: avoid using autoregressive approach because the purpose is only
-    # to avoid quickly setting eps ~ 0 in the initial rounds. Don't want to
-    # bias the step size in later rounds.
     def adapt_base_step_size(base_step_size, mean_step_size, n_samples_in_round):
-        return (
-            (5*base_step_size + n_samples_in_round*mean_step_size) /
-            (5 + n_samples_in_round)
-        )
+        return mean_step_size
     
 
 class AsymmetricSelector(StepSizeSelector):
@@ -90,7 +83,7 @@ def make_deterministic_bounds_sampler(p_lo, p_hi):
     fixed_bounds = jnp.log(jnp.array([p_lo, p_hi]))
     return (lambda _: fixed_bounds)
 
-def DeterministicAsymmetricSelector(p_lo=0.1, p_hi=0.9, *args, **kwargs):
+def DeterministicAsymmetricSelector(p_lo=0.1, p_hi=0.99, *args, **kwargs):
     """
     Asymmetric selector with fixed deterministic endpoints.
 
@@ -121,7 +114,7 @@ class SymmetricSelector(StepSizeSelector):
             lax.abs(log_diff) + bounds[0] > 0
         )
 
-def DeterministicSymmetricSelector(p_lo=0.1, p_hi=0.9, *args, **kwargs):
+def DeterministicSymmetricSelector(p_lo=0.1, p_hi=0.99, *args, **kwargs):
     """
     Symmetric selector with fixed deterministic endpoints.
 
@@ -143,7 +136,7 @@ class FixedStepSizeSelector(StepSizeSelector):
     def __init__(self):
         super().__init__(
             max_n_iter = 0, 
-            bounds_sampler = make_deterministic_bounds_sampler(0.1, 0.9) # numbers are irrelevant
+            bounds_sampler = make_deterministic_bounds_sampler(0.4, 0.6) # bounds are irrelevant
         )
 
     @staticmethod

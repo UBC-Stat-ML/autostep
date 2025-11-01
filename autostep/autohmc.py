@@ -14,7 +14,7 @@ class AutoHMC(autostep.AutoStep):
     def __init__(
             self, 
             *args, 
-            n_leapfrog_steps=1, 
+            n_leapfrog_steps=32, 
             forward_mode_ad=False, 
             **kwargs
         ):

@@ -19,7 +19,7 @@ class TestTempering(unittest.TestCase):
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        partial(autohmc.AutoHMC, n_leapfrog_steps=32)
+        autohmc.AutoHMC
     )
     
     def test_no_nan_at_zero(self):

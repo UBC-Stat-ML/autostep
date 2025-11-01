@@ -13,6 +13,11 @@ pip install "autostep @ git+https://github.com/UBC-Stat-ML/autostep.git"
 
 ## Eight-schools example
 
+We apply autoHMC to the classic toy eight schools problem. We use all default
+settings (32 leapfrog steps, `DeterministicSymmetricSelector` for the step
+size adaptation critetion), except for the preconditioner. Since the problem
+is low dimensional, we can afford to use a full dense mass matrix to drastically
+improve the conditioning of the target.
 ```python
 from jax import random
 import jax.numpy as jnp
@@ -20,7 +25,7 @@ import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import MCMC
 from autostep import preconditioning
-from autostep.autohmc import AutoMALA, AutoHMC
+from autostep.autohmc import AutoHMC
 from autostep import utils
 
 # define model
@@ -35,11 +40,10 @@ def eight_schools(sigma, y=None):
         numpyro.sample('obs', dist.Normal(theta, sigma), obs=y)
 
 # instantiate sampler and run
-n_rounds = 14
+n_rounds = 12
 n_warmup, n_keep = utils.split_n_rounds(n_rounds) # translate rounds to warmup/keep
 kernel = AutoHMC(
     eight_schools,
-    n_leapfrog_steps=32,
     preconditioner = preconditioning.FixedDensePreconditioner()
 )
 mcmc = MCMC(kernel, num_warmup=n_warmup, num_samples=n_keep)
@@ -47,20 +51,22 @@ mcmc.run(random.key(9), sigma, y=y)
 mcmc.print_summary()
 ```
 ```
-sample: 100%|███| 32766/32766 [00:58<00:00, 561.27it/s, base_step 1.50e-01, rev_rate=0.89, acc_prob=0.81]
+sample: 100%|███| 8190/8190 [00:13<00:00, 614.36it/s, base_step 1.01e-01, rev_rate=0.96, acc_prob=0.90]
 
                 mean       std    median      5.0%     95.0%     n_eff     r_hat
-        mu      4.35      3.34      4.40     -1.06      9.85  11948.87      1.00
-       tau      3.67      3.34      2.82      0.02      7.83    561.33      1.00
-  theta[0]      6.26      5.66      5.69     -2.43     15.03   3694.65      1.00
-  theta[1]      4.85      4.72      4.77     -2.67     12.64  12237.45      1.00
-  theta[2]      3.92      5.39      4.15     -4.70     12.35  10668.33      1.00
-  theta[3]      4.74      4.82      4.72     -3.21     12.15  14035.57      1.00
-  theta[4]      3.59      4.74      3.85     -3.84     11.44   6886.19      1.00
-  theta[5]      4.00      4.86      4.17     -3.73     11.73  10520.05      1.00
-  theta[6]      6.34      5.12      5.86     -1.64     14.61   3060.37      1.00
-  theta[7]      4.83      5.47      4.75     -3.86     12.89  12227.15      1.00
+        mu      4.38      3.40      4.36     -1.31      9.54  11296.80      1.00
+       tau      3.67      3.23      2.73      0.08      7.85    224.57      1.00
+  theta[0]      6.28      5.75      5.74     -2.11     15.37   1661.16      1.00
+  theta[1]      4.87      4.76      4.91     -4.28     11.59   7753.07      1.00
+  theta[2]      3.90      5.48      4.18     -4.87     12.24   4461.17      1.00
+  theta[3]      4.83      4.99      4.83     -3.90     11.89   6988.49      1.00
+  theta[4]      3.60      4.72      3.76     -4.05     11.02   3519.48      1.00
+  theta[5]      3.92      4.88      4.14     -3.75     11.89   4680.06      1.00
+  theta[6]      6.30      5.13      5.85     -1.38     14.61   1916.97      1.00
+  theta[7]      4.89      5.22      4.81     -3.07     13.13   5879.55      1.00
 ```
+In less than 15 seconds, the sampler achieves `r_hat~1` across latent variables,
+as well as a minimum effective sample size of 224.57.
 
 ## TODO
 

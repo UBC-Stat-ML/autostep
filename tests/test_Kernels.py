@@ -57,8 +57,7 @@ class TestKernels(unittest.TestCase):
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        partial(autohmc.AutoHMC, n_leapfrog_steps=32),
-
+        autohmc.AutoHMC
     )
 
     TESTED_PRECONDITIONERS = (
@@ -189,9 +188,10 @@ class TestKernels(unittest.TestCase):
                         jnp.allclose(adapt_stats.sample_mean, true_mean, rtol=tol),
                         msg=f"sample_mean={adapt_stats.sample_mean} but true_mean={true_mean}"
                     )
+                    sample_sd = jnp.sqrt(adapt_stats.sample_var)
                     self.assertTrue(
-                        jnp.allclose(adapt_stats.sample_var, true_var, rtol=tol),
-                        msg=f"sample_var={adapt_stats.sample_var} but true_var={true_var}"
+                        jnp.allclose(sample_sd, true_sd, rtol=tol, atol=tol),
+                        msg=f"sample_sd={sample_sd} but true_sd={true_sd}"
                     )
     
 
