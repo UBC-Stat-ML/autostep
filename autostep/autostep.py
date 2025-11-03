@@ -108,9 +108,9 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         return AutoStepState(
             initial_params,
             jnp.zeros(sample_field_flat_shape),
-            jnp.array(0.), # Note: not the actual loglik; needs to be updated 
-            jnp.array(0.), # Note: not the actual logposterior; needs to be updated 
-            jnp.array(0.), # Note: not the actual log joint value; needs to be updated 
+            jnp.array(0.), # Note: not the actual log-prior; needs to be updated 
+            jnp.array(0.), # Note: not the actual log-lik; needs to be updated 
+            jnp.array(0.), # Note: not the actual log-joint; needs to be updated 
             rng_key,
             statistics.make_stats_recorder(
                 sample_field_flat_shape, self.preconditioner
@@ -217,7 +217,7 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
 
     def update_log_joint(self, state, precond_state):
         """
-        Update the log-likelihood, log-posterior, and log-joint.
+        Update the log-prior, log-likelihood, and log-joint.
 
         :param state: Current state.
         :param precond_state: Preconditioner state.
