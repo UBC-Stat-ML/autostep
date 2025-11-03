@@ -24,8 +24,8 @@ AutoStepState = namedtuple(
     [
         "x",
         "p_flat",
+        "log_prior",
         "log_lik",
-        "log_posterior",
         "log_joint",
         "rng_key",
         "stats",
@@ -41,11 +41,10 @@ It consists of the fields:
  - **x** - the sample field, corresponding to a pytree representing a value in
    unconstrained space.
  - **p_flat** - flattened momentum/velocity vector.
+ - **log_prior** - log-prior density of ``x``. Includes possible log-abs-det-jac 
+   values associated with transformations to unconstrained space.
  - **log_lik** - log-likelihood of ``x``.
- - **log_posterior** - log-posterior of ``x``. The log-prior part includes 
-   possible log-abs-det-jac values associated with transformations to 
-   unconstrained space.
- - **log_joint** - log-posterior plus kinetic energy of ``p_flat``.
+ - **log_joint** - log-prior plus log-likelihood plus log density of ``p_flat``.
  - **rng_key** - random number generator key.
  - **stats** - an ``AutoStepStats`` object.
  - **base_step_size** - the initial step size. Fixed within a round but updated
@@ -235,8 +234,8 @@ class AutoStep(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         
         # replace state with updated values and return
         return state._replace(
-            log_lik = new_log_lik,
-            log_posterior = new_log_prior + new_log_lik,
+            log_prior = new_log_prior,
+            log_lik = new_log_lik,            
             log_joint = -(new_temp_pot + new_kinetic_energy)
         )
 
