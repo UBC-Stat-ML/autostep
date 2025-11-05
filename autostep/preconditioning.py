@@ -144,15 +144,16 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
 # ill-conditioned sample variances
 def adapt_base_precond_state(base_precond_state, sample_var, n):
     # add a nugget to the estimated sample variance
-    # follows the definition of tolerance in the `jnp.matrix_rank` function
+    # inspired by default `rtol` in `jnp.matrix_rank`
     # https://github.com/jax-ml/jax/blob/30582db24e8794abd09df2b3120aa5b58af8e9fe/jax/_src/numpy/linalg.py#L463
-    nugget = sample_var.shape[-1] * jnp.finfo(sample_var.dtype).eps
+    eps = jnp.finfo(sample_var.dtype).eps
+    nugget = jnp.minimum(sample_var.shape[-1] * eps, jnp.sqrt(eps)) # backstop with sqrt{eps}
     corrected_sample_var = sample_var + nugget
 
     # new variance as weighted average of old and corrected sample var
-    # note: the decaying schedule is from NumPyro (which says it's from Stan):
-    # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
-    var = (5*base_precond_state.var + n*corrected_sample_var) / (n + 5)
+    # intuition: in round-based adaptation, the latest sample variance estimate
+    # is computed using twice as many samples as the previous one
+    var = (base_precond_state.var + 2*corrected_sample_var) / 3
 
     # compute the remaining terms, depending on shape
     if jnp.ndim(sample_var) == 2:
@@ -164,7 +165,7 @@ def adapt_base_precond_state(base_precond_state, sample_var, n):
             lower=True
         )
     else:
-        var_tril_factor = lax.sqrt(var)
+        var_tril_factor = jnp.sqrt(var)
         inv_var_triu_factor = jnp.reciprocal(var_tril_factor)
 
     return PreconditionerState(var, var_tril_factor, inv_var_triu_factor)
