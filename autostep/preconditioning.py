@@ -140,9 +140,9 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
         )
 
 
-# adapt the base preconditioner state, regularizing to avoid issues with 
+# adapt the base preconditioner state, regularizing to avoid issues with
 # ill-conditioned sample variances
-def adapt_base_precond_state(base_precond_state, sample_var, n):
+def adapt_base_precond_state(base_precond_state, sample_var, n_samples):
     # add a nugget to the estimated sample variance
     # inspired by default `rtol` in `jnp.matrix_rank`
     # https://github.com/jax-ml/jax/blob/30582db24e8794abd09df2b3120aa5b58af8e9fe/jax/_src/numpy/linalg.py#L463
