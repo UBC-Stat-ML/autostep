@@ -140,18 +140,19 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
         )
 
 
-# adapt the base preconditioner state, regularizing via the old variance to 
-# avoid issues with ill-conditioned sample variances. note: the specific weights
-# apparently are used in Stan, according to NumPyro
-# https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
+# adapt the base preconditioner state, regularizing to avoid issues with 
+# ill-conditioned sample variances
 def adapt_base_precond_state(base_precond_state, sample_var, n):
-    # define a nugget
-    eps = 10 * lax.sqrt(jnp.finfo(sample_var.dtype).eps) * (
-        jnp.identity(sample_var.shape[-1]) if jnp.ndim(sample_var)==2 else 1
-    )
+    # add a nugget to the estimated sample variance
+    # follows the definition of tolerance in the `jnp.matrix_rank` function
+    # https://github.com/jax-ml/jax/blob/30582db24e8794abd09df2b3120aa5b58af8e9fe/jax/_src/numpy/linalg.py#L463
+    nugget = sample_var.shape[-1] * jnp.finfo(sample_var.dtype).eps
+    corrected_sample_var = sample_var + nugget
 
-    # new variance as weighted average of old+nugget, and the estimated one
-    var = (5*(eps+base_precond_state.var) + n*sample_var) / (n + 5)
+    # new variance as weighted average of old and corrected sample var
+    # note: the decaying schedule is from NumPyro (which says it's from Stan):
+    # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
+    var = (5*base_precond_state.var + n*corrected_sample_var) / (n + 5)
 
     # compute the remaining terms, depending on shape
     if jnp.ndim(sample_var) == 2:
