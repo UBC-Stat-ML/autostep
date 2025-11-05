@@ -151,9 +151,10 @@ def adapt_base_precond_state(base_precond_state, sample_var, n_samples):
     corrected_sample_var = sample_var + nugget
 
     # new variance as weighted average of old and corrected sample var
-    # intuition: in round-based adaptation, the latest sample variance estimate
-    # is computed using twice as many samples as the previous one
-    var = (base_precond_state.var + 2*corrected_sample_var) / 3
+    # note: the decaying schedule is from NumPyro (which says it's from Stan):
+    # https://github.com/pyro-ppl/numpyro/blob/ab1f0dc6e954ef7d54724386667e33010b2cfc8b/numpyro/infer/hmc_util.py#L219
+    w_new = n_samples / (n_samples+5)
+    var = (1-w_new)*base_precond_state.var + w_new*corrected_sample_var
 
     # compute the remaining terms, depending on shape
     if jnp.ndim(sample_var) == 2:
