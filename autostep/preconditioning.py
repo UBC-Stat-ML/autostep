@@ -140,7 +140,7 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
         )
 
 def fix_cond_number(sample_var):
-    eps = jnp.finfo(sample_var_eigvals.dtype).eps
+    eps = jnp.finfo(sample_var.dtype).eps
     dim = sample_var.shape[-1]
     if jnp.ndim(sample_var) == 2:
         # add a nugget to the estimated sample variance
