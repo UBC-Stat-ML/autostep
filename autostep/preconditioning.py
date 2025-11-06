@@ -139,16 +139,27 @@ def init_base_precond_state(sample_field_flat_shape, preconditioner):
             jnp.ones(sample_field_flat_shape)
         )
 
+def fix_cond_number(sample_var):
+    eps = jnp.finfo(sample_var.dtype).eps
+    dim = sample_var.shape[-1]
+    if jnp.ndim(sample_var) == 2:
+        # add a nugget to the estimated sample variance
+        # inspired by default `rtol` in `jnp.matrix_rank`
+        # https://github.com/jax-ml/jax/blob/30582db24e8794abd09df2b3120aa5b58af8e9fe/jax/_src/numpy/linalg.py#L463
+        sample_var_eigvals = jnp.linalg.eigvalsh(sample_var)
+        nugget = sample_var_eigvals[-1] * dim * eps
+        corrected_sample_var = sample_var + nugget*jnp.identity(dim)
+    else:
+        # need less severe correction -> no eigval and backstop with sqrt{eps}
+        nugget = jnp.minimum(dim * eps, jnp.sqrt(eps))
+        corrected_sample_var = sample_var + nugget
+
+    return corrected_sample_var
 
 # adapt the base preconditioner state, regularizing to avoid issues with
 # ill-conditioned sample variances
 def adapt_base_precond_state(base_precond_state, sample_var, n_samples):
-    # add a nugget to the estimated sample variance
-    # inspired by default `rtol` in `jnp.matrix_rank`
-    # https://github.com/jax-ml/jax/blob/30582db24e8794abd09df2b3120aa5b58af8e9fe/jax/_src/numpy/linalg.py#L463
-    eps = jnp.finfo(sample_var.dtype).eps
-    nugget = jnp.minimum(sample_var.shape[-1] * eps, jnp.sqrt(eps)) # backstop with sqrt{eps}
-    corrected_sample_var = sample_var + nugget
+    corrected_sample_var = fix_cond_number(sample_var)
 
     # new variance as weighted average of old and corrected sample var
     # note: the decaying schedule is from NumPyro (which says it's from Stan):
