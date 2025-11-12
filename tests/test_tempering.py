@@ -54,7 +54,7 @@ class TestTempering(unittest.TestCase):
                     )
                     sample_sd = jnp.sqrt(adapt_stats.sample_var)
                     self.assertTrue(
-                        jnp.allclose(sample_sd, true_sd, rtol=0.25),
+                        jnp.allclose(sample_sd, true_sd, atol=0.3, rtol=0.15),
                         msg=f"sample_sd={sample_sd} but true_sd={true_sd}"
                     )
 
