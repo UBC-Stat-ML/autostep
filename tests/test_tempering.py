@@ -34,7 +34,7 @@ class TestTempering(unittest.TestCase):
         model, model_args, model_kwargs = testutils.toy_conjugate_normal()
         rng_key = random.key(321453)
         for inv_temp in jnp.array([0., 0.25, 0.75, 1.0]):
-            true_var = jnp.reciprocal(inv_temp + model_args[0] ** (-2))
+            true_var = jnp.reciprocal(inv_temp + jnp.reciprocal(jnp.square(model_args[0])))
             true_sd = jnp.sqrt(true_var)
             true_mean = inv_temp * model_args[1][0] * true_var
             for kernel_type in self.TESTED_KERNELS:
@@ -45,7 +45,7 @@ class TestTempering(unittest.TestCase):
                         kernel, 
                         num_warmup=n_warmup, 
                         num_samples=n_keep, 
-                        progress_bar=False
+                        progress_bar=True
                     )
                     mcmc.run(mcmc_key, *model_args, **model_kwargs)
                     adapt_stats=mcmc.last_state.stats.adapt_stats
