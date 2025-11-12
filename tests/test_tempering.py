@@ -45,7 +45,7 @@ class TestTempering(unittest.TestCase):
                         kernel, 
                         num_warmup=n_warmup, 
                         num_samples=n_keep, 
-                        progress_bar=True
+                        progress_bar=False
                     )
                     mcmc.run(mcmc_key, *model_args, **model_kwargs)
                     adapt_stats=mcmc.last_state.stats.adapt_stats
