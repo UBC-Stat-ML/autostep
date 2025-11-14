@@ -1,6 +1,7 @@
 from abc import ABCMeta
 from functools import partial
 
+import jax
 from jax import flatten_util
 from jax import numpy as jnp
 from jax import lax
@@ -64,7 +65,14 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         )
         return bwd_state, fwd_state
 
-    def grow_slice(self, rng_key, bwd_state, fwd_state, target_log_joint, precond_state):
+    def grow_slice(
+            self, 
+            rng_key, 
+            bwd_state, 
+            fwd_state, 
+            target_log_joint, 
+            precond_state
+        ):
         width = bwd_state.base_step_size
         max_grow_steps = self.max_grow_steps
 
@@ -73,70 +81,118 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         max_grow_steps_fwd = max_grow_steps - max_grow_steps_bwd
         
         # loop condition
-        def cond_fn(state, budget):
+        def cond_fn(carry):
+            state, budget = carry
             return jnp.logical_and(
                 budget>0, self.in_slice(state, target_log_joint)
             )
         
         # grow function
-        def body_fn(direction, carry):
+        def body_fn(dx, carry):
             state, budget = carry
             x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)
-            x_new = unravel_fn(x_flat + state.p_flat*width*direction)
-            state_new = self.update_log_joint(
+            x_new = unravel_fn(x_flat + dx)
+            state = self.update_log_joint(
                 state._replace(x=x_new), precond_state
             )
-            return (state_new, budget-1)
-        
+            return (state, budget-1)
+
+        # define increment
+        fwd_dx = fwd_state.p_flat*width # p_flat should be the same on both states
+
         # grow bwd
         bwd_state, _ = lax.while_loop(
             cond_fn, 
-            partial(body_fn, -1),
+            partial(body_fn, -fwd_dx),
             (bwd_state, max_grow_steps_bwd)
         )
 
         # grow fwd
         fwd_state, _ = lax.while_loop(
             cond_fn, 
-            partial(body_fn, 1),
+            partial(body_fn, fwd_dx),
             (fwd_state, max_grow_steps_fwd)
         )
 
         return bwd_state, fwd_state
+    
+    # slice shrinking
+    # recall that this algorithm repeatedly samples a point x in the 
+    # segment [x_bwd, x_fwd] and updates these endpoints depending on the
+    # location of the starting point x_0. Writing the endpoints as
+    #    x_fwd = x_0 + s_f d => s_f = d^T(x_fwd-x_0)/|d|^2 = (d/|d|)^T[(x_fwd-x_0)/|d|]
+    #    x_bwd = x_0 + s_b d => s_b = d^T(x_bwd-x_0)/|d|^2 = (d/|d|)^T[(x_bwd-x_0)/|d|]
+    # any interior point x can be written as
+    #    x = x_bwd + u (x_fwd-x_bwd)
+    #      = x_0 + s_bd + u(s_f-s_b)d
+    #      = x_0 + s(u)d
+    # with
+    #    s(u) := [s_b + u(s_f-s_b)]
+    # so
+    #    x = x_0 <=> s(u)=0
+    #    s_f >= s(u) > 0 <=> x_0 in [x, x_fwd] 
+    #                    => (s'_bwd, s'_fwd)=(s(u), s_fwd)
+    #    s_b <= s(u) < 0 <=> x_0 in [x_bwd, x] 
+    #                    => (s'_bwd, s'_fwd)=(s_bwd, s(u))
+    # which are the update rules for the scalar steps
+    def shrink_slice(
+            self, 
+            rng_key, 
+            init_state, 
+            bwd_state, 
+            fwd_state, 
+            target_log_joint, 
+            precond_state
+        ):
+        # get scalar steps of the initial boundaries
+        x_flat_bwd, unravel_fn = flatten_util.ravel_pytree(bwd_state.x)
+        x_flat_fwd    = flatten_util.ravel_pytree(fwd_state.x)[0]
+        x_flat        = flatten_util.ravel_pytree(init_state.x)[0]
+        p_flat        = fwd_state.p_flat
+        p_flat_norm   = jnp.linalg.norm(p_flat)
+        unit_flat     = p_flat/p_flat_norm 
+        init_step_bwd = jnp.dot(unit_flat, (x_flat_bwd-x_flat)/p_flat_norm)
+        init_step_fwd = jnp.dot(unit_flat, (x_flat_fwd-x_flat)/p_flat_norm)
 
-    def shrink_slice(self, rng_key, bwd_state, fwd_state, target_log_joint, precond_state):
-        def draw_new_position(draw_key, xf_bwd, xf_fwd, new_state):
+        # shrinking loop body
+        def body_fn(carry):
+            rng_key, step_fwd, step_bwd, new_state = carry
+            rng_key, draw_key = random.split(rng_key)
             u = random.uniform(draw_key)
-            x_new = unravel_fn(xf_bwd + u*(xf_fwd-xf_bwd))
-            return self.update_log_joint(
+            step_new = step_bwd + u*(step_fwd-step_bwd)
+            x_new = unravel_fn(x_flat + step_new*p_flat)
+            new_state = self.update_log_joint(
                 new_state._replace(x = x_new), precond_state
             )
-        
-        # initial position
-        rng_key, init_key = random.split(rng_key)
-        x_flat_bwd, unravel_fn = flatten_util.ravel_pytree(bwd_state.x)
-        x_flat_fwd = flatten_util.ravel_pytree(fwd_state.x)[0]
-        new_state = draw_new_position(
-            init_key, x_flat_bwd, x_flat_fwd, bwd_state # use bwd_state as template
-        )
+            step_bwd = jnp.where(step_new<0, step_bwd, step_new)
+            step_fwd = jnp.where(step_new>0, step_fwd, step_new)
+            return (rng_key, step_fwd, step_bwd, new_state)
 
-        # shrinking loop
+        # shrinking loop cond
         def cond_fn(carry):
-            *_, new_state, n_iter = carry
-            return jnp.logical_and(
-                n_iter<self.max_shrink_steps,
-                jnp.logical_not(self.in_slice(new_state, target_log_joint))
+            _, step_fwd, step_bwd, new_state = carry
+            jax.debug.print(
+                "shrink: [s_b, s_f]=[{}, {}], lp={}, lpt={}",
+                step_bwd, step_fwd, new_state.log_joint, target_log_joint,
+                ordered=True
+            )
+            eps = 100*jnp.finfo(step_bwd.dtype).eps
+            return jnp.logical_not(
+                jnp.logical_or(
+                    self.in_slice(new_state, target_log_joint),
+                    jnp.isclose(step_fwd, step_bwd, atol=eps, rtol=eps)
+                )
             )
         
-        def body_fn(carry):
-            rng_key, x_flat_bwd, x_flat_fwd, new_state, n_iter = carry
-            rng_key, draw_key = random.split(rng_key)
-            new_state = draw_new_position(
-                draw_key, x_flat_bwd, x_flat_fwd, new_state
-            )
+        # shrinking loop
+        new_state = lax.while_loop(
+            cond_fn, 
+            body_fn,
+            (rng_key, init_step_fwd, init_step_bwd, init_state) 
+        )[-1]
+
+        return new_state
             
-
-
     def sample(self, state, model_args, model_kwargs):
         # generate rng keys and store the updated master key in the state
         (
@@ -144,8 +200,9 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
             precond_key, 
             init_key, 
             height_key,
-            grow_key
-        ) = random.split(state.rng_key, 5)
+            grow_key,
+            shrink_key
+        ) = random.split(state.rng_key, 6)
         state = state._replace(rng_key = rng_key)
 
         # build a (possibly randomized) preconditioner
@@ -163,12 +220,41 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         target_log_joint = state.log_joint - random.exponential(height_key)
 
         # init slice endpoints
-        bwd_state, fwd_state = self.init_endpoints(init_key, state)
+        bwd_state, fwd_state = self.init_endpoints(
+            init_key, state, precond_state
+        )
 
         # grow slice
-        
+        bwd_state, fwd_state = self.grow_slice(
+            grow_key, 
+            bwd_state, 
+            fwd_state, 
+            target_log_joint, 
+            precond_state
+        )
 
+        # shrink slice
+        new_state = self.shrink_slice( 
+            shrink_key, 
+            state, 
+            bwd_state, 
+            fwd_state, 
+            target_log_joint, 
+            precond_state
+        )
 
-        return
+        return new_state
 
     
+class DeterministicScanSliceSampler(SliceSampler):
+
+    def init_extras(self, state):
+        p_flat = state.p_flat
+        return state._replace(
+            p_flat = jax.nn.one_hot(0, len(p_flat), dtype=p_flat.dtype)
+        )
+
+    def refresh_aux_vars(self, state, precond_state):
+        return state._replace(p_flat = jnp.roll(state.p_flat, 1))
+
+

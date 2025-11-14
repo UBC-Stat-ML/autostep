@@ -249,7 +249,6 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
             stats.adapt_stats.sample_idx == last_step # are we at the end of a round?
         )
 
-    @abstractmethod
     def adapt(self, state, force=False):
         """
         Round-based adaptation.
@@ -258,5 +257,5 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         :param force: Should adaptation be forced regardless of round status?
         :return: Possibly updated state.
         """
-        raise NotImplementedError
+        return state
     
