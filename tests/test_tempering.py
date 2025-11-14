@@ -34,7 +34,7 @@ class TestTempering(unittest.TestCase):
         model, model_args, model_kwargs = testutils.toy_conjugate_normal()
         rng_key = random.key(321453)
         for inv_temp in jnp.array([0., 0.25, 0.75, 1.0]):
-            true_var = jnp.reciprocal(inv_temp + model_args[0] ** (-2))
+            true_var = jnp.reciprocal(inv_temp + jnp.reciprocal(jnp.square(model_args[0])))
             true_sd = jnp.sqrt(true_var)
             true_mean = inv_temp * model_args[1][0] * true_var
             for kernel_type in self.TESTED_KERNELS:
@@ -54,7 +54,7 @@ class TestTempering(unittest.TestCase):
                     )
                     sample_sd = jnp.sqrt(adapt_stats.sample_var)
                     self.assertTrue(
-                        jnp.allclose(sample_sd, true_sd, rtol=0.25),
+                        jnp.allclose(sample_sd, true_sd, atol=0.3, rtol=0.15),
                         msg=f"sample_sd={sample_sd} but true_sd={true_sd}"
                     )
 

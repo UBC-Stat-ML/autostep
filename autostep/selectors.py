@@ -18,7 +18,7 @@ class StepSizeSelector(ABC):
 
     def __init__(
             self, 
-            max_n_iter=7, # 2**7 => step size changes +/- 2 orders of mag
+            max_n_iter=14, # 2**14~1.6e4 => step size changes +/- 4 orders of mag
             bounds_sampler=_draw_log_unif_bounds
         ):
         self.max_n_iter = max_n_iter
@@ -83,7 +83,7 @@ def make_deterministic_bounds_sampler(p_lo, p_hi):
     fixed_bounds = jnp.log(jnp.array([p_lo, p_hi]))
     return (lambda _: fixed_bounds)
 
-def DeterministicAsymmetricSelector(p_lo=0.1, p_hi=0.99, *args, **kwargs):
+def DeterministicAsymmetricSelector(p_lo=0.01, p_hi=0.99, *args, **kwargs):
     """
     Asymmetric selector with fixed deterministic endpoints.
 
@@ -114,7 +114,7 @@ class SymmetricSelector(StepSizeSelector):
             lax.abs(log_diff) + bounds[0] > 0
         )
 
-def DeterministicSymmetricSelector(p_lo=0.1, p_hi=0.99, *args, **kwargs):
+def DeterministicSymmetricSelector(p_lo=0.01, p_hi=0.99, *args, **kwargs):
     """
     Symmetric selector with fixed deterministic endpoints.
 
