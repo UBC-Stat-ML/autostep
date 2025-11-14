@@ -6,8 +6,8 @@ from jax import numpy as jnp
 from autostep.utils import current_round
 from autostep.preconditioning import is_dense, adapt_base_precond_state
 
-AutoStepAdaptStats = namedtuple(
-    "AutoStepAdaptStats",
+AutoMCMCAdaptStats = namedtuple(
+    "AutoMCMCAdaptStats",
     [
         "sample_idx",
         "mean_step_size",
@@ -41,7 +41,7 @@ def make_adapt_stats_recorder(
             if is_dense(preconditioner) 
             else sample_field_flat_shape
         )
-    return AutoStepAdaptStats()._replace(
+    return AutoMCMCAdaptStats()._replace(
         sample_mean = jnp.zeros(sample_field_flat_shape),
         sample_var = jnp.zeros(sample_var_shape)
     )
@@ -52,25 +52,25 @@ def empty_adapt_stats_recorder(adapt_stats):
         sample_var_shape=jnp.shape(adapt_stats.sample_var)
     )
 
-AutoStepStats = namedtuple(
+AutoMCMCStats = namedtuple(
     "AutoStepStats",
     [
         "n_samples",
         "adapt_stats"
     ],
-    defaults=(0, AutoStepAdaptStats())
+    defaults=(0, AutoMCMCAdaptStats())
 )
 """
 A :func:`~collections.namedtuple` consisting of the following fields:
 
  - **n_samples** - total number of calls to ``sample`` so far. At the end of
    a run, this should be equal to `num_warmup+num_samples`.
- - **adapt_stats** - an ``AutoStepAdaptStats`` namedtuple which contains adaptation
+ - **adapt_stats** - an ``AutoMCMCAdaptStats`` namedtuple which contains adaptation
    information pertaining to the current round.
 """
 
 def make_stats_recorder(sample_field_flat_shape, preconditioner):
-    return AutoStepStats()._replace(
+    return AutoMCMCStats()._replace(
         adapt_stats = make_adapt_stats_recorder(
             sample_field_flat_shape, preconditioner=preconditioner
         )
@@ -96,9 +96,9 @@ def record_post_sample_stats(stats, avg_fwd_bwd_step_size, acc_prob, rev_pass, x
     new_sample_mean = sample_mean + (x_flat - sample_mean)/sample_idx
     dvars = delta_vars(sample_var, x_flat - sample_mean, x_flat - new_sample_mean)
     new_sample_var = ((sample_idx-1)*sample_var + dvars) / sample_idx
-    return AutoStepStats(
+    return AutoMCMCStats(
         n_samples, 
-        AutoStepAdaptStats(
+        AutoMCMCAdaptStats(
             sample_idx, 
             new_mean_step_size, 
             new_mean_acc_prob, 

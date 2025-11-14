@@ -44,18 +44,6 @@ class AutoStep(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         self.selector = selector
         self.init_alter_step_size_loop_funs()
 
-    @abstractmethod
-    def refresh_aux_vars(self, rng_key, state, precond_state):
-        """
-        Refresh auxiliary variables required by the underlying involutive MCMC method.
-
-        :param rng_key: Random number generator key.
-        :param state: Current state.
-        :param precond_state: Preconditioner state.
-        :return: State with updated auxiliary variables.
-        """
-        raise NotImplementedError
-
     def step_size(self, base_step_size, exponent):
         """
         Compute the step size associated with an exponent. Default implementation

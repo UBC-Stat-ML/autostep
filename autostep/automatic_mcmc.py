@@ -193,16 +193,29 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     
     def kinetic_energy(self, state, precond_state):
         """
-        Computes the potential energy for any augmented variables whose density
-        is not invariant to the involution. The default implementation assumes
-        that the distribution of all auxiliary variables is invariant under the
-        involution (this is true for autoRWMH, for example).
+        Computes the potential energy for any auxiliary variables. The default
+        implementation assumes that the `sample` method does not modify the 
+        auxiliary variables (this is true for autoRWMH, for example). In this
+        case, the kinetic energy term cancels in the acceptance ratio so we 
+        can simply ignore it.
 
         :param state: Current state.
         :param precond_state: Preconditioner state.
         :return: Kinetic energy.
         """
         return jnp.zeros_like(state.p_flat[0])
+    
+    def refresh_aux_vars(self, rng_key, state, precond_state):
+        """
+        Gibbs update for any auxiliary variables of the sampler that admit
+        i.i.d. sampling.
+
+        :param rng_key: Random number generator key.
+        :param state: Current state.
+        :param precond_state: Preconditioner state.
+        :return: State with updated auxiliary variables.
+        """
+        raise state
 
     def update_log_joint(self, state, precond_state):
         """
