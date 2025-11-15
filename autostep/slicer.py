@@ -23,7 +23,6 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         self,
         *args,
         max_grow_steps = 20,
-        max_shrink_steps = 40,
         init_window_size = 4.0, # min-cost-optimal for N(0,1)
         **kwargs
     ):
@@ -32,7 +31,6 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
 
         :param args: Passed to the :class:`AutomaticMCMC` constructor.
         :param max_grow_steps: Maximum number of iterations of the stepping-out phase.
-        :param max_shrink_steps: Maximum number of iterations of the shrink phase.
         :param init_window_size: Size of initial window. Internally we identify
             this parameter with the step size in the :class:`AutomaticMCMC` 
             interface.
@@ -83,6 +81,11 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         # loop condition
         def cond_fn(carry):
             state, budget = carry
+            # jax.debug.print(
+            #     "grow: lp={}, lpt={}",
+            #     state.log_joint, target_log_joint,
+            #     ordered=True
+            # )
             return jnp.logical_and(
                 budget>0, self.in_slice(state, target_log_joint)
             )
@@ -156,7 +159,7 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
 
         # shrinking loop body
         def body_fn(carry):
-            rng_key, step_fwd, step_bwd, new_state = carry
+            i, rng_key, step_fwd, step_bwd, new_state = carry
             rng_key, draw_key = random.split(rng_key)
             u = random.uniform(draw_key)
             step_new = step_bwd + u*(step_fwd-step_bwd)
@@ -164,23 +167,26 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
             new_state = self.update_log_joint(
                 new_state._replace(x = x_new), precond_state
             )
-            step_bwd = jnp.where(step_new<0, step_bwd, step_new)
-            step_fwd = jnp.where(step_new>0, step_fwd, step_new)
-            return (rng_key, step_fwd, step_bwd, new_state)
+            step_bwd = jnp.where(step_new<0, step_new, step_bwd)
+            step_fwd = jnp.where(step_new>0, step_new, step_fwd)
+            return (i+1, rng_key, step_fwd, step_bwd, new_state)
 
         # shrinking loop cond
         def cond_fn(carry):
-            _, step_fwd, step_bwd, new_state = carry
-            jax.debug.print(
-                "shrink: [s_b, s_f]=[{}, {}], lp={}, lpt={}",
-                step_bwd, step_fwd, new_state.log_joint, target_log_joint,
-                ordered=True
-            )
-            eps = 100*jnp.finfo(step_bwd.dtype).eps
-            return jnp.logical_not(
-                jnp.logical_or(
-                    self.in_slice(new_state, target_log_joint),
-                    jnp.isclose(step_fwd, step_bwd, atol=eps, rtol=eps)
+            i, _, step_fwd, step_bwd, new_state = carry
+            # jax.debug.print(
+            #     "shrink: [s_b, s_f]=[{}, {}], lp={}, lpt={}",
+            #     step_bwd, step_fwd, new_state.log_joint, target_log_joint,
+            #     ordered=True
+            # )
+            eps = jnp.sqrt(jnp.finfo(step_bwd.dtype).eps)
+            return jnp.logical_or(
+                i == 0, # always do at least 1 iteration
+                jnp.logical_not(
+                    jnp.logical_or(
+                        self.in_slice(new_state, target_log_joint),
+                        jnp.isclose(step_fwd, step_bwd, atol=eps, rtol=eps)
+                    )
                 )
             )
         
@@ -188,7 +194,7 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         new_state = lax.while_loop(
             cond_fn, 
             body_fn,
-            (rng_key, init_step_fwd, init_step_bwd, init_state) 
+            (0, rng_key, init_step_fwd, init_step_bwd, init_state) 
         )[-1]
 
         return new_state
