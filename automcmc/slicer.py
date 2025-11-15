@@ -9,7 +9,7 @@ from jax import random
 
 from automcmc import automcmc, statistics
 
-class SliceSampler(automcmc.AutomaticMCMC, metaclass=ABCMeta):
+class SliceSampler(automcmc.AutoMCMC, metaclass=ABCMeta):
     """
     Interface for defining slice sampling algorithms that leverage the 
     univariate algorithm of Neal (2003). The `p_flat` component of the
@@ -29,12 +29,12 @@ class SliceSampler(automcmc.AutomaticMCMC, metaclass=ABCMeta):
         """
         Initialize the slice sampler.
 
-        :param args: Passed to the :class:`AutomaticMCMC` constructor.
+        :param args: Passed to the :class:`AutoMCMC` constructor.
         :param max_grow_steps: Maximum number of iterations of the stepping-out phase.
         :param init_window_size: Size of initial window. Internally we identify
-            this parameter with the step size in the :class:`AutomaticMCMC` 
+            this parameter with the step size in the :class:`AutoMCMC` 
             interface.
-        :param kwargs: Passed to the :class:`AutomaticMCMC` constructor.
+        :param kwargs: Passed to the :class:`AutoMCMC` constructor.
         """
         super().__init__(*args, init_base_step_size=init_window_size, **kwargs)
         self.max_grow_steps = max_grow_steps

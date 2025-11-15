@@ -20,7 +20,8 @@ class TestTempering(unittest.TestCase):
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
         autohmc.AutoHMC,
-        slicer.HitAndRunSliceSampler
+        slicer.HitAndRunSliceSampler,
+        slicer.DeterministicScanSliceSampler
     )
     
     def test_no_nan_at_zero(self):

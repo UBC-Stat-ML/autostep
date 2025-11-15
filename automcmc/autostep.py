@@ -10,7 +10,7 @@ from automcmc import automcmc
 from automcmc import statistics
 from automcmc import utils
 
-class AutoStep(automcmc.AutomaticMCMC, metaclass=ABCMeta):
+class AutoStep(automcmc.AutoMCMC, metaclass=ABCMeta):
     """
     Defines the interface for AutoStep MCMC kernels as described in
     Liu et al. (2025).

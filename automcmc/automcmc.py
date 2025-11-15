@@ -53,7 +53,7 @@ It consists of the fields:
    version of a model's distribution.
 """
 
-class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
+class AutoMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     """
     Interface for MCMC samplers that can be understood as automatically
     tuning their key parameters at each step. Any other hyperparameter is 
@@ -121,7 +121,7 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
     def init_extras(self, state):
         """
         Carry out additional initializations not required by all 
-        :class:`AutomaticMCMC` kernels.
+        :class:`AutoMCMC` kernels.
         """
         return state
 
