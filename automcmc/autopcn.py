@@ -2,7 +2,7 @@ from jax import flatten_util
 from jax import numpy as jnp
 from jax import random
 
-from autostep import autostep
+from automcmc import autostep
 
 class AutoPCN(autostep.AutoStep):
     """
@@ -28,12 +28,11 @@ class AutoPCN(autostep.AutoStep):
     
     # sample p ~ N(0,S), where S is approx the posterior covariance
     # equivalent to v~N(0,I) and p = Lv, with LL^T = S.
-    def refresh_aux_vars(self, state, precond_state):
-        rng_key, v_key = random.split(state.rng_key)
-        v_flat = random.normal(v_key, jnp.shape(state.p_flat))
+    def refresh_aux_vars(self, rng_key, state, precond_state):
+        v_flat = random.normal(rng_key, jnp.shape(state.p_flat))
         L = precond_state.var_tril_factor
         p_flat = L @ v_flat if jnp.ndim(L) == 2 else L * v_flat
-        return state._replace(p_flat = p_flat, rng_key = rng_key)
+        return state._replace(p_flat = p_flat)
     
     # pCN as rotation
     # note: for implementation purposes, we assume `step_size` to be abs value 

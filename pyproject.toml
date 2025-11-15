@@ -1,7 +1,7 @@
 [project]
-name = "autostep"
+name = "automcmc"
 version = "0.1.0"
-description = "A NumPyro implementation of autoStep methods"
+description = "A NumPyro-compatible JAX implementation of AutoStep and other automatically tuned samplers."
 authors = [
     {name = "Miguel Biron-Lattes",email = "miguelbl9@gmail.com"}
 ]
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/UBC-Stat-ML/autostep.git"
+Repository = "https://github.com/UBC-Stat-ML/automcmc.git"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

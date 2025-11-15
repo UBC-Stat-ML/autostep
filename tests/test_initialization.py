@@ -5,8 +5,8 @@ import unittest
 from jax import random
 from jax import numpy as jnp
 
-from autostep import initialization
-from autostep import tempering
+from automcmc import initialization
+from automcmc import tempering
 
 class TestInitialization(unittest.TestCase):
 

@@ -50,8 +50,11 @@ def numerically_safe_diff(x0, x1):
 # of every round.
 ###############################################################################
 
+def n_steps_in_round(round):
+    return 2 ** round
+
 def split_n_rounds(n_rounds):
-    n_keep = 2 ** n_rounds
+    n_keep = n_steps_in_round(n_rounds)
     return (n_keep-2, n_keep)
 
 def current_round(n_samples):

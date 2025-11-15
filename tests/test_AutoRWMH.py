@@ -7,11 +7,11 @@ from jax import numpy as jnp
 
 from numpyro.infer import MCMC
 
-from autostep import autostep
-from autostep import autorwmh
-from autostep import selectors
-from autostep import statistics
-from autostep import utils
+from automcmc import autostep
+from automcmc import autorwmh
+from automcmc import selectors
+from automcmc import statistics
+from automcmc import utils
 
 
 class TestAutoRWMH(unittest.TestCase):

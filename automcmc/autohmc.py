@@ -6,8 +6,8 @@ from jax import lax
 from jax import numpy as jnp
 from jax import random
 
-from autostep import autostep
-from autostep import tempering
+from automcmc import autostep
+from automcmc import tempering
 
 class AutoHMC(autostep.AutoStep):
 
@@ -38,12 +38,11 @@ class AutoHMC(autostep.AutoStep):
         Minv_p_flat = Minv @ p_flat if jnp.ndim(Minv) == 2 else Minv * p_flat
         return 0.5*jnp.dot(Minv_p_flat, p_flat)
     
-    def refresh_aux_vars(self, state, precond_state):
-        rng_key, v_key = random.split(state.rng_key)
-        v_flat = random.normal(v_key, jnp.shape(state.p_flat))
+    def refresh_aux_vars(self, rng_key, state, precond_state):
+        v_flat = random.normal(rng_key, jnp.shape(state.p_flat))
         U = precond_state.inv_var_triu_factor
         p_flat = U @ v_flat if jnp.ndim(U) == 2 else U * v_flat
-        return state._replace(p_flat = p_flat, rng_key = rng_key)
+        return state._replace(p_flat = p_flat)
     
     def involution_main(self, step_size, state, precond_state):
         return self.integrator(

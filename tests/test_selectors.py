@@ -6,9 +6,9 @@ from jax import numpy as jnp
 
 from numpyro.infer import MCMC
 
-from autostep import autohmc
-from autostep import selectors
-from autostep import utils
+from automcmc import autohmc
+from automcmc import selectors
+from automcmc import utils
 
 class TestSelectors(unittest.TestCase):
 
