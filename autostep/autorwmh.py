@@ -6,10 +6,9 @@ from autostep import autostep
 
 class AutoRWMH(autostep.AutoStep):
    
-    def refresh_aux_vars(self, state, precond_state):
-        rng_key, v_key = random.split(state.rng_key)
-        p_flat = random.normal(v_key, jnp.shape(state.p_flat))
-        return state._replace(p_flat = p_flat, rng_key = rng_key)
+    def refresh_aux_vars(self, rng_key, state, precond_state):
+        p_flat = random.normal(rng_key, jnp.shape(state.p_flat))
+        return state._replace(p_flat = p_flat)
     
     def involution_main(self, step_size, state, precond_state):
         x_flat, unravel_fn = flatten_util.ravel_pytree(state.x)

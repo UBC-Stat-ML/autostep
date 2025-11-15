@@ -204,11 +204,12 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         (
             rng_key, 
             precond_key, 
+            aux_key,
             init_key, 
             height_key,
             grow_key,
             shrink_key
-        ) = random.split(state.rng_key, 6)
+        ) = random.split(state.rng_key, 7)
         state = state._replace(rng_key = rng_key)
 
         # build a (possibly randomized) preconditioner
@@ -218,7 +219,7 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
 
         # refresh the direction
         state = self.update_log_joint(
-            self.refresh_aux_vars(state, precond_state), precond_state
+            self.refresh_aux_vars(aux_key, state, precond_state), precond_state
         )
 
         # draw a target log height

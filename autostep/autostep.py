@@ -88,9 +88,10 @@ class AutoStep(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         (
             rng_key, 
             precond_key, 
+            aux_key,
             selector_key, 
             accept_key
-        ) = random.split(state.rng_key, 4)
+        ) = random.split(state.rng_key, 5)
         state = state._replace(rng_key = rng_key)
 
         # build a (possibly randomized) preconditioner
@@ -109,7 +110,7 @@ class AutoStep(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         # density, and finally check if the latter is finite
         # Checker needs checkifying twice for some reason
         state = self.update_log_joint(
-            self.refresh_aux_vars(state, precond_state), precond_state
+            self.refresh_aux_vars(aux_key, state, precond_state), precond_state
         )
         checkify.checkify(utils.checkified_is_finite)(state.log_joint)[0].throw()
 
