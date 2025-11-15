@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from functools import partial
 
 import jax
 from jax.experimental import checkify
@@ -7,10 +6,7 @@ from jax import lax
 from jax import numpy as jnp
 from jax import random
 
-from numpyro import util
-
 from autostep import automatic_mcmc
-from autostep import selectors
 from autostep import statistics
 from autostep import utils
 
@@ -34,14 +30,8 @@ class AutoStep(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
             self, 1
         )
     
-    def __init__(
-        self,
-        *args,
-        selector = selectors.DeterministicSymmetricSelector(),
-        **kwargs
-    ):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.selector = selector
         self.init_alter_step_size_loop_funs()
 
     def step_size(self, base_step_size, exponent):
@@ -253,39 +243,4 @@ class AutoStep(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
             exponent
         )
         return state, exponent
-    
-    def adapt(self, state, force=False):
-        """
-        Round-based adaptation, as described in Biron-Lattes et al. (2024).
 
-        Currently, this updates `base_step_size` and `base_precond_state`.
-        At the end, it empties the `AutoStepAdaptStats` recorder.
-
-        :param state: Current state.
-        :param force: Should adaptation be forced regardless of round status?
-        :return: Possibly updated state.
-        """
-        stats = state.stats
-        new_base_step_size, new_base_precond_state, new_adapt_stats = lax.cond(
-            force or self.is_time_to_adapt(stats),
-            partial(statistics.update_sampler_params, self.selector),
-            util.identity,
-            (state.base_step_size, state.base_precond_state, stats.adapt_stats)
-        )
-        new_stats = stats._replace(adapt_stats = new_adapt_stats)
-        state = state._replace(
-            base_step_size = new_base_step_size, 
-            base_precond_state = new_base_precond_state,
-            stats = new_stats
-        )
-        # jax.debug.print(
-        #     """
-        #     n_samples={n}, round={r}, sample_idx={s},
-        #     base_step_size={b}, base_precond_state={e},
-        #     mean_step_size={ms}, mean_acc_prob={ma},
-        #     sample_mean={m}, sample_var={v}""", ordered=True,
-        #     n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
-        #     b=state.base_step_size, e=state.base_precond_state,
-        #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
-        #     m=new_stats.adapt_stats.sample_mean,v=new_stats.adapt_stats.sample_var)
-        return state

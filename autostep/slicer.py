@@ -7,7 +7,7 @@ from jax import numpy as jnp
 from jax import lax
 from jax import random
 
-from autostep import automatic_mcmc
+from autostep import automatic_mcmc, statistics
 
 class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
     """
@@ -191,13 +191,13 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
             )
         
         # shrinking loop
-        new_state = lax.while_loop(
+        *_, step_fwd, step_bwd, new_state = lax.while_loop(
             cond_fn, 
             body_fn,
             (0, rng_key, init_step_fwd, init_step_bwd, init_state) 
-        )[-1]
+        )
 
-        return new_state
+        return new_state, step_fwd, step_bwd
             
     def sample(self, state, model_args, model_kwargs):
         # generate rng keys and store the updated master key in the state
@@ -241,7 +241,7 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
         )
 
         # shrink slice
-        new_state = self.shrink_slice( 
+        new_state, step_fwd, step_bwd = self.shrink_slice( 
             shrink_key, 
             state, 
             bwd_state, 
@@ -249,6 +249,19 @@ class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
             target_log_joint, 
             precond_state
         )
+
+        # collect statistics
+        new_x = jax.flatten_util.ravel_pytree(
+            getattr(new_state, self.sample_field)
+        )[0]
+        estimated_slice_width = step_fwd-step_bwd # avg of this seems to shrink as d^{-1/2} for N(0,I)
+        new_stats = statistics.record_post_sample_stats(
+            new_state.stats, estimated_slice_width, 1.0, True, new_x            
+        )
+        new_state = new_state._replace(stats = new_stats)
+
+        # maybe adapt
+        new_state = self.adapt(new_state)
 
         return new_state
 

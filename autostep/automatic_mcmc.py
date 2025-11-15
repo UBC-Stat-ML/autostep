@@ -1,8 +1,9 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 from collections import namedtuple
 from functools import partial
 
 from jax import flatten_util
+from jax import lax
 from jax import numpy as jnp
 from jax import random
 
@@ -11,6 +12,7 @@ from numpyro import util
 
 from autostep import initialization
 from autostep import preconditioning
+from autostep import selectors
 from autostep import statistics
 from autostep import tempering
 from autostep import utils
@@ -72,6 +74,8 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         potential_fn=None,
         logprior_and_loglik = None,
         init_base_step_size = 1.0,
+        # we need this for all AutoMCMC methods only for step size adapt rule
+        selector = selectors.DeterministicSymmetricSelector(),
         preconditioner = preconditioning.FixedDiagonalPreconditioner(),
         init_inv_temp = None,
         initialization_settings = None
@@ -81,6 +85,7 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         self.logprior_and_loglik = logprior_and_loglik
         self._postprocess_fn = None
         self.init_base_step_size = init_base_step_size
+        self.selector = selector
         self.preconditioner = preconditioner
         self.init_inv_temp = (
             None if init_inv_temp is None else jnp.array(init_inv_temp)
@@ -253,9 +258,35 @@ class AutomaticMCMC(infer.mcmc.MCMCKernel, metaclass=ABCMeta):
         """
         Round-based adaptation.
 
+        Currently, this updates `base_step_size` and `base_precond_state`.
+        At the end, it empties the `AutoMCMCAdaptStats` recorder.
+
         :param state: Current state.
         :param force: Should adaptation be forced regardless of round status?
         :return: Possibly updated state.
         """
+        stats = state.stats
+        new_base_step_size, new_base_precond_state, new_adapt_stats = lax.cond(
+            force or self.is_time_to_adapt(stats),
+            partial(statistics.update_sampler_params, self.selector),
+            util.identity,
+            (state.base_step_size, state.base_precond_state, stats.adapt_stats)
+        )
+        new_stats = stats._replace(adapt_stats = new_adapt_stats)
+        state = state._replace(
+            base_step_size = new_base_step_size, 
+            base_precond_state = new_base_precond_state,
+            stats = new_stats
+        )
+        # jax.debug.print(
+        #     """
+        #     n_samples={n}, round={r}, sample_idx={s},
+        #     base_step_size={b}, base_precond_state={e},
+        #     mean_step_size={ms}, mean_acc_prob={ma},
+        #     sample_mean={m}, sample_var={v}""", ordered=True,
+        #     n=stats.n_samples,r=round,s=stats.adapt_stats.sample_idx,
+        #     b=state.base_step_size, e=state.base_precond_state,
+        #     ms=new_stats.adapt_stats.mean_step_size, ma=new_stats.adapt_stats.mean_acc_prob,
+        #     m=new_stats.adapt_stats.sample_mean,v=new_stats.adapt_stats.sample_var)
         return state
     
