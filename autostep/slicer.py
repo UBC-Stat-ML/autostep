@@ -265,3 +265,12 @@ class DeterministicScanSliceSampler(SliceSampler):
         return state._replace(p_flat = jnp.roll(state.p_flat, 1))
 
 
+class HitAndRunSliceSampler(SliceSampler):
+    # sample p ~ N(0,S), where S is approx the posterior covariance
+    # equivalent to v~N(0,I) and p = Lv, with LL^T = S.
+    def refresh_aux_vars(self, rng_key, state, precond_state):
+        v_flat = random.normal(rng_key, jnp.shape(state.p_flat))
+        L = precond_state.var_tril_factor
+        p_flat = L @ v_flat if jnp.ndim(L) == 2 else L * v_flat
+        return state._replace(p_flat = p_flat)
+    
