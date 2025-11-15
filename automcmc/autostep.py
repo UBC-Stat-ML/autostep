@@ -6,11 +6,11 @@ from jax import lax
 from jax import numpy as jnp
 from jax import random
 
-from autostep import automatic_mcmc
-from autostep import statistics
-from autostep import utils
+from automcmc import automcmc
+from automcmc import statistics
+from automcmc import utils
 
-class AutoStep(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
+class AutoStep(automcmc.AutomaticMCMC, metaclass=ABCMeta):
     """
     Defines the interface for AutoStep MCMC kernels as described in
     Liu et al. (2025).

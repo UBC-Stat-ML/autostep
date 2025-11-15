@@ -5,21 +5,22 @@ import unittest
 
 from jax import random
 from jax import numpy as jnp
-jnp.sqrt(3)/jnp.sqrt(2)-1
 
 from numpyro.infer import MCMC
 
-from autostep import autohmc
-from autostep import autorwmh
-from autostep import utils
-from autostep import tempering
+from automcmc import autohmc
+from automcmc import autorwmh
+from automcmc import slicer
+from automcmc import utils
+from automcmc import tempering
 
 class TestTempering(unittest.TestCase):
 
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        autohmc.AutoHMC
+        autohmc.AutoHMC,
+        slicer.HitAndRunSliceSampler
     )
     
     def test_no_nan_at_zero(self):

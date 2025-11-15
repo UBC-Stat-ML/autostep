@@ -7,9 +7,9 @@ import jax.numpy as jnp
 
 from numpyro.infer import MCMC
 
-from autostep.autohmc import AutoMALA
-from autostep import utils
-from autostep import preconditioning
+from automcmc.autohmc import AutoMALA
+from automcmc import utils
+from automcmc import preconditioning
 
 class TestPreconditioning(unittest.TestCase):
 

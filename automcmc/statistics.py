@@ -3,8 +3,8 @@ from collections import namedtuple
 import jax
 from jax import numpy as jnp
 
-from autostep.utils import current_round
-from autostep.preconditioning import is_dense, adapt_base_precond_state
+from automcmc.utils import current_round
+from automcmc.preconditioning import is_dense, adapt_base_precond_state
 
 AutoMCMCAdaptStats = namedtuple(
     "AutoMCMCAdaptStats",

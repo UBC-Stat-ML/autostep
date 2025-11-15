@@ -7,9 +7,9 @@ from jax import numpy as jnp
 from jax import lax
 from jax import random
 
-from autostep import automatic_mcmc, statistics
+from automcmc import automcmc, statistics
 
-class SliceSampler(automatic_mcmc.AutomaticMCMC, metaclass=ABCMeta):
+class SliceSampler(automcmc.AutomaticMCMC, metaclass=ABCMeta):
     """
     Interface for defining slice sampling algorithms that leverage the 
     univariate algorithm of Neal (2003). The `p_flat` component of the
@@ -274,11 +274,18 @@ class DeterministicScanSliceSampler(SliceSampler):
             p_flat = jax.nn.one_hot(0, len(p_flat), dtype=p_flat.dtype)
         )
 
-    def refresh_aux_vars(self, state, precond_state):
+    def refresh_aux_vars(self, rng_key, state, precond_state):
         return state._replace(p_flat = jnp.roll(state.p_flat, 1))
 
 
 class HitAndRunSliceSampler(SliceSampler):
+    """
+    Hit-and-Run sampler implemented via slice sampling along lines.
+
+    Kiatsupaibul, S., Smith, R. L., & Zabinsky, Z. B. (2011). An analysis of a 
+    variation of hit-and-run for uniform sampling from general regions. ACM 
+    Transactions on Modeling and Computer Simulation (TOMACS), 21(3), 1-11.
+    """
     # sample p ~ N(0,S), where S is approx the posterior covariance
     # equivalent to v~N(0,I) and p = Lv, with LL^T = S.
     def refresh_aux_vars(self, rng_key, state, precond_state):

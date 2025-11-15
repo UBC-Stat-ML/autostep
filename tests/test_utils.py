@@ -1,7 +1,7 @@
 import unittest
 
 from jax import numpy as jnp
-from autostep import utils
+from automcmc import utils
 
 class TestUtils(unittest.TestCase):
 

@@ -6,8 +6,8 @@ from jax import lax
 from jax import numpy as jnp
 from jax import random
 
-from autostep import autostep
-from autostep import tempering
+from automcmc import autostep
+from automcmc import tempering
 
 class AutoHMC(autostep.AutoStep):
 

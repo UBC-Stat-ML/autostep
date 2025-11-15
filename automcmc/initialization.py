@@ -2,7 +2,7 @@ from functools import partial
 
 from numpyro import infer
 
-from autostep import tempering, optimization
+from automcmc import tempering, optimization
 
 # initialize a NumPyro model
 # get starting point, potential fun, and postprocess fun

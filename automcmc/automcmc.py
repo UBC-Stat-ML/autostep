@@ -10,12 +10,12 @@ from jax import random
 from numpyro import infer
 from numpyro import util
 
-from autostep import initialization
-from autostep import preconditioning
-from autostep import selectors
-from autostep import statistics
-from autostep import tempering
-from autostep import utils
+from automcmc import initialization
+from automcmc import preconditioning
+from automcmc import selectors
+from automcmc import statistics
+from automcmc import tempering
+from automcmc import utils
 
 AutoMCMCState = namedtuple(
     "AutoMCMCState",

@@ -3,7 +3,7 @@
 
 # `autostep`
 
-***A NumPyro-compatible JAX implementation of AutoStep samplers***
+*A NumPyro-compatible JAX implementation of AutoStep samplers*
 
 ## Installation
 

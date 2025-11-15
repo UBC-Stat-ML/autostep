@@ -2,7 +2,7 @@ from jax import flatten_util
 from jax import numpy as jnp
 from jax import random
 
-from autostep import autostep
+from automcmc import autostep
 
 class AutoRWMH(autostep.AutoStep):
    

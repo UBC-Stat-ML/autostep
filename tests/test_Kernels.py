@@ -12,12 +12,14 @@ from jax import numpy as jnp
 
 from numpyro.infer import MCMC
 
-from autostep import autohmc
-from autostep import autorwmh
-from autostep import preconditioning
-from autostep import selectors
-from autostep import statistics
-from autostep import utils
+from automcmc import autohmc
+from automcmc import autorwmh
+from automcmc import slicer
+from automcmc import preconditioning
+from automcmc import selectors
+from automcmc import statistics
+from automcmc import utils
+
 
 # sequentially sample multiple times, discard intermediate states
 def loop_sample(kernel, n_refresh, kernel_state):
@@ -57,7 +59,8 @@ class TestKernels(unittest.TestCase):
     TESTED_KERNELS = (
         autorwmh.AutoRWMH,
         autohmc.AutoMALA,
-        autohmc.AutoHMC
+        autohmc.AutoHMC,
+        slicer.HitAndRunSliceSampler
     )
 
     TESTED_PRECONDITIONERS = (
@@ -78,6 +81,8 @@ class TestKernels(unittest.TestCase):
         n_warmup = utils.split_n_rounds(10)[0]
         rng_key = random.key(321)
         for kernel_class in self.TESTED_KERNELS:
+            if kernel_class is slicer.HitAndRunSliceSampler: # not involutive
+                continue
             for prec in self.TESTED_PRECONDITIONERS:
                 for sel in self.TESTED_SELECTORS:
                     with self.subTest(kernel_class=kernel_class, prec_type=type(prec), sel_type=sel):
@@ -123,6 +128,8 @@ class TestKernels(unittest.TestCase):
         for kernel_class in self.TESTED_KERNELS:
             for prec in self.TESTED_PRECONDITIONERS:
                 for sel in self.TESTED_SELECTORS:
+                    if kernel_class is slicer.HitAndRunSliceSampler and (sel is not selectors.DeterministicSymmetricSelector):
+                        continue
                     for max_n_iter in max_n_iters:
                         with self.subTest(
                             kernel_class=kernel_class, prec_type=type(prec), sel_type=sel, max_n_iter=max_n_iter
@@ -164,6 +171,8 @@ class TestKernels(unittest.TestCase):
         tol = 0.2
         for kernel_class in self.TESTED_KERNELS:
             for sel in self.TESTED_SELECTORS:
+                if kernel_class is slicer.HitAndRunSliceSampler and (sel is not selectors.DeterministicSymmetricSelector):
+                        continue
                 with self.subTest(kernel_class=kernel_class, sel_type=sel):
                     print(f"kernel_class={kernel_class}, sel_type={sel}")
                     rng_key, run_key = random.split(rng_key)
@@ -206,6 +215,8 @@ class TestKernels(unittest.TestCase):
                     # doesnt work
                     continue
                 for sel in self.TESTED_SELECTORS:
+                    if kernel_class is slicer.HitAndRunSliceSampler and (sel is not selectors.DeterministicSymmetricSelector):
+                        continue
                     if sel is selectors.AsymmetricSelector:
                         # doesnt work with automala here
                         continue

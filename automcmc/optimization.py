@@ -10,7 +10,7 @@ from jax import numpy as jnp
 import optax
 import tqdm
 
-from autostep import utils
+from automcmc import utils
 
 # L-BFGS
 def make_lbfgs_solver(target_fun, solver_params, verbose):
