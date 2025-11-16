@@ -1,14 +1,14 @@
-[![Build Status](https://github.com/UBC-Stat-ML/autostep/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/UBC-Stat-ML/autostep/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/UBC-Stat-ML/autostep/branch/main/graph/badge.svg)](https://codecov.io/gh/UBC-Stat-ML/autostep)
+[![Build Status](https://github.com/UBC-Stat-ML/automcmc/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/UBC-Stat-ML/automcmc/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/UBC-Stat-ML/automcmc/branch/main/graph/badge.svg)](https://codecov.io/gh/UBC-Stat-ML/automcmc)
 
-# `autostep`
+# `automcmc`
 
-*A NumPyro-compatible JAX implementation of AutoStep samplers*
+*A NumPyro-compatible JAX implementation of AutoStep and other automatically tuned samplers.*
 
 ## Installation
 
 ```bash
-pip install "autostep @ git+https://github.com/UBC-Stat-ML/autostep.git"
+pip install "automcmc @ git+https://github.com/UBC-Stat-ML/automcmc.git"
 ```
 
 ## Eight-schools example
@@ -24,9 +24,9 @@ import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import MCMC
-from autostep import preconditioning
-from autostep.autohmc import AutoHMC
-from autostep import utils
+from automcmc import preconditioning
+from automcmc.autohmc import AutoHMC
+from automcmc import utils
 
 # define model
 y = jnp.array([28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0])
