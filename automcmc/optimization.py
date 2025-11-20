@@ -67,7 +67,7 @@ def optimize_fun(
     params, opt_state = init_params, solver.init(init_params)
     old_params = params
     grad_norm = value_abs_diff = params_diff_norm = jnp.full_like(value, 10*tol)
-    n_consecutive = np.zeros((3,), np.int8) # one counter for each termination criterion
+    n_consecutive = np.zeros((3,), np.int32) # one counter for each termination criterion
     n = 0
     with tqdm.tqdm(total=n_iter, disable=(not verbose)) as t:
         while (n < n_iter and np.all(n_consecutive < max_consecutive)):
