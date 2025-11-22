@@ -35,36 +35,18 @@ def make_lbfgs_solver(target_fun, solver_params, verbose):
     
     return solver, step_fn
 
-# optimization loop
-def optimize_fun(
-        target_fun, 
-        init_params, 
-        settings,
-        verbose = True,
-        tol = None,
-        max_consecutive = 8
+def optimization_loop(
+        target_fun,
+        step_fn,
+        params,
+        opt_state,
+        n_iter, 
+        tol,
+        max_consecutive, 
+        verbose
     ):
-    settings = deepcopy(settings) # safer since we `pop` stuff from it
-    
-    if tol is None:
-        # default to sqrt of machine tol of the float type used in the first leaf
-        tol = 10*jnp.finfo(jax.tree.leaves(init_params)[0].dtype).eps
-
-    # select solver
-    solver = settings['strategy']
-    solver_params = settings['params']
-    n_iter = solver_params.pop('n_iter')
-    if settings['strategy'] == "L-BFGS":
-        solver, step_fn = make_lbfgs_solver(target_fun, solver_params, verbose)
-    else:
-        raise ValueError(
-            f"Unknown strategy '{settings['strategy']}'"
-        )
-    
-    # optimization loop
-    value = old_value = target_fun(init_params)
+    value = old_value = target_fun(params)
     verbose and print(f'Initial energy: {value:.1e}')
-    params, opt_state = init_params, solver.init(init_params)
     old_params = params
     grad_norm = value_abs_diff = params_diff_norm = jnp.full_like(value, 10*tol)
     n_consecutive = np.zeros((3,), np.int32) # one counter for each termination criterion
@@ -93,9 +75,45 @@ def optimize_fun(
             t.set_postfix_str(diag_str, refresh=False) # will refresh with `update`
             t.update()
             n += 1
+    return params, opt_state, value
+
+# optimization loop
+def optimize_fun(
+        target_fun, 
+        init_params, 
+        settings,
+        verbose = True,
+        tol = None,
+    ):
+    settings = deepcopy(settings) # safer since we `pop` stuff from it
+    
+    if tol is None:
+        # default to sqrt of machine tol of the float type used in the first leaf
+        tol = 10*jnp.finfo(jax.tree.leaves(init_params)[0].dtype).eps
+
+    # select solver
+    solver_params = settings['solver_params']
+    if settings['strategy'] == "L-BFGS":
+        solver, step_fn = make_lbfgs_solver(target_fun, solver_params, verbose)
+    else:
+        raise ValueError(
+            f"Unknown strategy '{settings['strategy']}'"
+        )
+    
+    opt_state = solver.init(init_params)
+    params, opt_state, final_value = optimization_loop(
+        target_fun,
+        step_fn,
+        params,
+        opt_state,
+        n_iter, 
+        tol,
+        max_consecutive, 
+        verbose
+    )
 
     if verbose:
-        print(f'Final energy after {n} steps: {target_fun(params):.1e}')
+        print(f'Final energy: {final_value:.1e}')
               
     return params, opt_state
 
